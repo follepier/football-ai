@@ -30,18 +30,17 @@ jobs:
         run: python backtest_baseline.py
 
       - name: Run model audits
-        working-directory: backend
         shell: bash
         run: |
           set -e
-          export PYTHONPATH="$PWD"
+          export PYTHONPATH="$PWD/backend"
           for script in \
             audit_walkforward_volume_definitivo.py \
             backtest_volume_alpha_grid_20.py \
             backtest_volume_ridge_esteso_20.py; do
-            if [ -f "$script" ]; then
+            if [ -f "backend/$script" ]; then
               echo "===== $script ====="
-              python "$script"
+              python "backend/$script"
             fi
           done
 
