@@ -1,0 +1,56 @@
+name: Model Backtest
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'backend/**'
+      - 'data/serie_a_features.csv'
+      - '.github/workflows/model_backtest.yml'
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Run baseline backtest
+        working-directory: backend
+        run: python backtest_baseline.py
+
+      - name: Run available model audits
+        working-directory: backend
+        shell: bash
+        run: |
+          set -e
+          for script in \
+            audit_walkforward_volume_definitivo.py \
+            backtest_volume_alpha_grid_20.py \
+            backtest_volume_ridge_esteso_20.py; do
+            if [ -f "$script" ]; then
+              echo "===== $script ====="
+              python "$script"
+            fi
+          done
+
+      - name: Upload backtest data
+        uses: actions/upload-artifact@v4
+        with:
+          name: model-backtest-results
+          path: |
+            data/serie_a_backtest_baseline.csv
+            data/*backtest*.csv
+            data/*audit*.csv
+          if-no-files-found: warn
+          retention-days: 14
