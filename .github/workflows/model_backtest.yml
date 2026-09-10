@@ -29,11 +29,12 @@ jobs:
         working-directory: backend
         run: python backtest_baseline.py
 
-      - name: Run available model audits
+      - name: Run model audits
         working-directory: backend
         shell: bash
         run: |
           set -e
+          export PYTHONPATH="$PWD"
           for script in \
             audit_walkforward_volume_definitivo.py \
             backtest_volume_alpha_grid_20.py \
@@ -45,6 +46,7 @@ jobs:
           done
 
       - name: Upload backtest data
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: model-backtest-results
