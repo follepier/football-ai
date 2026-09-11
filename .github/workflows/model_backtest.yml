@@ -37,7 +37,8 @@ jobs:
           for script in \
             audit_walkforward_volume_definitivo.py \
             backtest_volume_alpha_grid_20.py \
-            backtest_volume_ridge_esteso_20.py; do
+            backtest_volume_ridge_esteso_20.py \
+            backtest_variabili_combinazioni.py; do
             if [ -f "backend/$script" ]; then
               echo "===== $script ====="
               python "backend/$script"
