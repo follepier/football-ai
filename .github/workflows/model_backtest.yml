@@ -38,7 +38,8 @@ jobs:
             audit_walkforward_volume_definitivo.py \
             backtest_volume_alpha_grid_20.py \
             backtest_volume_ridge_esteso_20.py \
-            backtest_variabili_combinazioni.py; do
+            backtest_variabili_combinazioni.py \
+            audit_overfitting_variabili.py; do
             if [ -f "backend/$script" ]; then
               echo "===== $script ====="
               python "backend/$script"
