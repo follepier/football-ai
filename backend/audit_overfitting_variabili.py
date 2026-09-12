@@ -9,7 +9,6 @@ from sklearn.preprocessing import StandardScaler
 ROOT = Path(__file__).resolve().parents[1]
 FEATURES = ROOT / "data" / "serie_a_features.csv"
 BASELINE = ROOT / "data" / "serie_a_backtest_baseline.csv"
-COMBINATIONS = ROOT / "data" / "backtest_variabili_combinazioni.csv"
 OUT = ROOT / "data" / "audit_overfitting_variabili.csv"
 
 VARIABLES = {
@@ -25,7 +24,7 @@ VARIABLES = {
     "attacchi": ("casa_attacchi_totale_pre", "ospite_attacchi_totale_pre"),
     "attacchi_pericolosi": ("casa_attacchi_pericolosi_totale_pre", "ospite_attacchi_pericolosi_totale_pre"),
 }
-ALPHAS = (1, 10, 25, 50, 75, 100, 150, 200, 300, 500)
+ALPHAS = (0.1, 1, 10, 25, 50, 75, 100, 150, 200, 300, 500)
 MIN_TRAIN = 5
 MAX_COMBO = 3
 HOLDOUT = 5
@@ -42,17 +41,17 @@ def load(path):
         return list(csv.DictReader(fh))
 
 
-def metric(rows, preds):
+def metrics(rows, preds):
     if not rows:
-        return float("nan"), float("nan")
-    e = []
-    sq = []
-    for r, (ph, pa) in zip(rows, preds):
-        eh = ph - float(r["gol_casa_reali"])
-        ea = pa - float(r["gol_ospite_reali"])
-        e += [abs(eh), abs(ea)]
-        sq += [eh * eh, ea * ea]
-    return sum(e) / len(e), math.sqrt(sum(sq) / len(sq))
+        return float("nan"), float("nan"), float("nan"), float("nan")
+    eh = [ph - float(r["gol_casa_reali"]) for r, (ph, pa) in zip(rows, preds)]
+    ea = [pa - float(r["gol_ospite_reali"]) for r, (ph, pa) in zip(rows, preds)]
+    mae_h = sum(abs(x) for x in eh) / len(eh)
+    mae_a = sum(abs(x) for x in ea) / len(ea)
+    rmse_h = math.sqrt(sum(x * x for x in eh) / len(eh))
+    rmse_a = math.sqrt(sum(x * x for x in ea) / len(ea))
+    # Identico al benchmark ufficiale: media semplice casa/ospite.
+    return (mae_h + mae_a) / 2, (rmse_h + rmse_a) / 2, mae_h, mae_a
 
 
 def build_rows():
@@ -73,108 +72,123 @@ def build_rows():
     return out
 
 
-def evaluate(rows, combo, alpha, end=None):
-    data = rows[:end] if end is not None else rows
+def rolling_predict(rows, combo, alpha, start=MIN_TRAIN, end=None):
+    end = len(rows) if end is None else end
     preds = []
-    for i, row in enumerate(data):
+    for i in range(start, end):
+        row = rows[i]
+        hist = rows[:i]
+        X = [[r["features"][v] for v in combo] for r in hist]
+        yh = [float(r["gol_casa_reali"]) - float(r["gol_casa_attesi"]) for r in hist]
+        ya = [float(r["gol_ospite_reali"]) - float(r["gol_ospite_attesi"]) for r in hist]
+        scaler = StandardScaler().fit(X)
+        mh = Ridge(alpha=alpha).fit(scaler.transform(X), yh)
+        ma = Ridge(alpha=alpha).fit(scaler.transform(X), ya)
+        xt = scaler.transform([[row["features"][v] for v in combo]])
         bh = float(row["gol_casa_attesi"])
         ba = float(row["gol_ospite_attesi"])
-        if i < MIN_TRAIN:
-            preds.append((bh, ba))
-            continue
-        train = data[:i]
-        X = [[r["features"][v] for v in combo] for r in train]
-        yh = [float(r["gol_casa_reali"]) - float(r["gol_casa_attesi"]) for r in train]
-        ya = [float(r["gol_ospite_reali"]) - float(r["gol_ospite_attesi"]) for r in train]
-        scaler = StandardScaler().fit(X)
-        model_h = Ridge(alpha=alpha).fit(scaler.transform(X), yh)
-        model_a = Ridge(alpha=alpha).fit(scaler.transform(X), ya)
-        xt = scaler.transform([[row["features"][v] for v in combo]])
-        preds.append((max(0.0, bh + float(model_h.predict(xt)[0])), max(0.0, ba + float(model_a.predict(xt)[0]))))
-    return data, preds
-
-
-def candidate_key(combo):
-    return "+".join(combo)
+        preds.append((max(0.0, bh + float(mh.predict(xt)[0])), max(0.0, ba + float(ma.predict(xt)[0]))))
+    return preds
 
 
 rows = build_rows()
-combo_results = load(COMBINATIONS) if COMBINATIONS.exists() else []
-all_candidates = []
+results = []
+
 for size in range(1, MAX_COMBO + 1):
     for combo in itertools.combinations(VARIABLES, size):
-        all_candidates += [(combo, alpha) for alpha in ALPHAS]
+        usable = [r for r in rows if all(r["features"][v] is not None for v in combo)]
+        n = len(usable)
+        if n < MIN_TRAIN + 3:
+            continue
 
-results = []
-for combo, alpha in all_candidates:
-    usable = [r for r in rows if all(r["features"][v] is not None for v in combo)]
-    if len(usable) < MIN_TRAIN + 3:
-        continue
-    full, pred = evaluate(usable, combo, alpha)
-    base_pred = [(float(r["gol_casa_attesi"]), float(r["gol_ospite_attesi"])) for r in full]
-    mae, rmse = metric(full, pred)
-    bmae, brmse = metric(full, base_pred)
-    n = len(full)
-    third = max(1, n // 3)
-    segs = []
-    for start, end in ((0, third), (third, min(2 * third, n)), (min(2 * third, n), n)):
-        if end - start >= 2:
-            sm, sr = metric(full[start:end], pred[start:end])
-            sbm, sbr = metric(full[start:end], base_pred[start:end])
-            segs.append((sm - sbm, sr - sbr))
-    hold = min(HOLDOUT, max(1, n // 4))
-    split = n - hold
-    train_part = full[:split]
-    test_part = full[split:]
-    if len(train_part) >= MIN_TRAIN:
-        _, train_pred = evaluate(full, combo, alpha, end=split)
-        train_mae, train_rmse = metric(train_part, train_pred)
-        test_preds = []
-        for i, row in enumerate(test_part, start=split):
-            bh = float(row["gol_casa_attesi"])
-            ba = float(row["gol_ospite_attesi"])
-            hist = full[:i]
-            X = [[r["features"][v] for v in combo] for r in hist]
-            yh = [float(r["gol_casa_reali"]) - float(r["gol_casa_attesi"]) for r in hist]
-            ya = [float(r["gol_ospite_reali"]) - float(r["gol_ospite_attesi"]) for r in hist]
-            scaler = StandardScaler().fit(X)
-            mh = Ridge(alpha=alpha).fit(scaler.transform(X), yh)
-            ma = Ridge(alpha=alpha).fit(scaler.transform(X), ya)
-            xt = scaler.transform([[row["features"][v] for v in combo]])
-            test_preds.append((max(0.0, bh + float(mh.predict(xt)[0])), max(0.0, ba + float(ma.predict(xt)[0]))))
-        test_mae, test_rmse = metric(test_part, test_preds)
-        base_test = [(float(r["gol_casa_attesi"]), float(r["gol_ospite_attesi"])) for r in test_part]
-        base_test_mae, base_test_rmse = metric(test_part, base_test)
-    else:
-        train_mae = train_rmse = test_mae = test_rmse = float("nan")
-        base_test_mae = base_test_rmse = float("nan")
-    results.append({
-        "combo": candidate_key(combo), "alpha": alpha, "n": n,
-        "mae": mae, "rmse": rmse, "delta_mae": mae - bmae, "delta_rmse": rmse - brmse,
-        "seg1_dmae": segs[0][0] if len(segs)>0 else float("nan"),
-        "seg2_dmae": segs[1][0] if len(segs)>1 else float("nan"),
-        "seg3_dmae": segs[2][0] if len(segs)>2 else float("nan"),
-        "seg1_drmse": segs[0][1] if len(segs)>0 else float("nan"),
-        "seg2_drmse": segs[1][1] if len(segs)>1 else float("nan"),
-        "seg3_drmse": segs[2][1] if len(segs)>2 else float("nan"),
-        "train_mae": train_mae, "train_rmse": train_rmse,
-        "holdout_mae": test_mae, "holdout_rmse": test_rmse,
-        "holdout_delta_mae": test_mae - base_test_mae,
-        "holdout_delta_rmse": test_rmse - base_test_rmse,
-    })
+        base_all = [(float(r["gol_casa_attesi"]), float(r["gol_ospite_attesi"])) for r in usable]
+        base_mae, base_rmse, _, _ = metrics(usable, base_all)
+        hold = min(HOLDOUT, max(1, n // 4))
+        split = n - hold
 
-results.sort(key=lambda r: (r["holdout_delta_rmse"], r["holdout_delta_mae"], r["mae"]))
+        for alpha in ALPHAS:
+            pred_all = rolling_predict(usable, combo, alpha)
+            eval_rows = usable[MIN_TRAIN:]
+            model_mae, model_rmse, _, _ = metrics(eval_rows, pred_all)
+            base_eval = base_all[MIN_TRAIN:]
+            eval_base_mae, eval_base_rmse, _, _ = metrics(eval_rows, base_eval)
+
+            # Tre segmenti temporali sulle stesse previsioni walk-forward.
+            m = len(eval_rows)
+            third = max(1, m // 3)
+            seg_drmse = []
+            seg_dmae = []
+            for s, e in ((0, third), (third, min(2 * third, m)), (min(2 * third, m), m)):
+                if e - s >= 2:
+                    sm, sr, _, _ = metrics(eval_rows[s:e], pred_all[s:e])
+                    bm, br, _, _ = metrics(eval_rows[s:e], base_eval[s:e])
+                    seg_dmae.append(sm - bm)
+                    seg_drmse.append(sr - br)
+
+            # Holdout: il modello continua ad allenarsi solo sulle partite precedenti.
+            hold_rows = usable[split:]
+            hold_preds = rolling_predict(usable, combo, alpha, start=split, end=n)
+            hold_base = base_all[split:]
+            hold_mae, hold_rmse, _, _ = metrics(hold_rows, hold_preds)
+            hold_base_mae, hold_base_rmse, _, _ = metrics(hold_rows, hold_base)
+
+            # Proxy conservativo del rischio: gap assoluto tra miglioramento eval e holdout.
+            generalization_gap_mae = abs((model_mae - eval_base_mae) - (hold_mae - hold_base_mae))
+            generalization_gap_rmse = abs((model_rmse - eval_base_rmse) - (hold_rmse - hold_base_rmse))
+            stable_rmse = sum(x <= 0 for x in seg_drmse)
+            stable_mae = sum(x <= 0 for x in seg_dmae)
+
+            results.append({
+                "combo": "+".join(combo),
+                "alpha": alpha,
+                "n": n,
+                "eval_n": len(eval_rows),
+                "mae": model_mae,
+                "rmse": model_rmse,
+                "delta_mae": model_mae - eval_base_mae,
+                "delta_rmse": model_rmse - eval_base_rmse,
+                "seg1_dmae": seg_dmae[0] if len(seg_dmae) > 0 else float("nan"),
+                "seg2_dmae": seg_dmae[1] if len(seg_dmae) > 1 else float("nan"),
+                "seg3_dmae": seg_dmae[2] if len(seg_dmae) > 2 else float("nan"),
+                "seg1_drmse": seg_drmse[0] if len(seg_drmse) > 0 else float("nan"),
+                "seg2_drmse": seg_drmse[1] if len(seg_drmse) > 1 else float("nan"),
+                "seg3_drmse": seg_drmse[2] if len(seg_drmse) > 2 else float("nan"),
+                "stable_mae": stable_mae,
+                "stable_rmse": stable_rmse,
+                "holdout_mae": hold_mae,
+                "holdout_rmse": hold_rmse,
+                "holdout_delta_mae": hold_mae - hold_base_mae,
+                "holdout_delta_rmse": hold_rmse - hold_base_rmse,
+                "generalization_gap_mae": generalization_gap_mae,
+                "generalization_gap_rmse": generalization_gap_rmse,
+            })
+
+# Prima robustezza holdout, poi stabilita', poi RMSE/MAE globale.
+results.sort(key=lambda r: (
+    r["holdout_delta_rmse"],
+    r["holdout_delta_mae"],
+    -r["stable_rmse"],
+    r["generalization_gap_rmse"],
+    r["rmse"],
+    r["mae"],
+))
 
 with OUT.open("w", newline="", encoding="utf-8") as fh:
     writer = csv.DictWriter(fh, fieldnames=results[0].keys())
-    writer.writeheader(); writer.writerows(results)
+    writer.writeheader()
+    writer.writerows(results)
 
-print("=" * 110)
-print("AUDIT STABILITA TEMPORALE + HOLDOUT + RISCHIO OVERFITTING")
-print("=" * 110)
-print(f"Partite disponibili: {len(rows)} | Candidati testati: {len(results)} | Holdout: ultimi {HOLDOUT} quando possibile")
-print("Top candidati ordinati per miglioramento RMSE HOLDOUT:")
+print("=" * 120)
+print("AUDIT CORRETTO: MAE + RMSE + STABILITA TEMPORALE + HOLDOUT + OVERFITTING")
+print("=" * 120)
+print(f"Partite: {len(rows)} | Candidati: {len(results)} | Holdout: ultime {HOLDOUT} quando possibile")
+print("RMSE coerente con il benchmark ufficiale: media RMSE casa/ospite.")
+print("Top 25 ordinati prima per RMSE holdout, poi MAE holdout e stabilita':")
 for r in results[:25]:
-    stable = sum(x <= 0 for x in (r['seg1_drmse'], r['seg2_drmse'], r['seg3_drmse']) if not math.isnan(x))
-    print(f"{r['combo']:<60} a={r['alpha']:<3} n={r['n']:<2} full={r['delta_mae']:+.4f}/{r['delta_rmse']:+.4f} hold={r['holdout_delta_mae']:+.4f}/{r['holdout_delta_rmse']:+.4f} stableRMSE={stable}/3")
-print("Nota: il risultato finale non verra' scelto dal miglior punteggio full-sample; verra' privilegiato un candidato che regge holdout e segmenti temporali.")
+    print(
+        f"{r['combo']:<58} a={r['alpha']:<5} n={r['n']:<2} "
+        f"full={r['delta_mae']:+.4f}/{r['delta_rmse']:+.4f} "
+        f"hold={r['holdout_delta_mae']:+.4f}/{r['holdout_delta_rmse']:+.4f} "
+        f"stable={r['stable_rmse']}/3 gap={r['generalization_gap_rmse']:.4f}"
+    )
+print("Nessuna integrazione automatica nel modello principale: la selezione finale richiede robustezza, non solo il miglior punteggio.")
