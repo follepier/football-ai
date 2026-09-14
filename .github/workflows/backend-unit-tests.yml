@@ -4,12 +4,12 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - 'backend/app/services/football_api.py'
+      - 'backend/app/**'
       - 'backend/tests/**'
       - '.github/workflows/backend-unit-tests.yml'
   pull_request:
     paths:
-      - 'backend/app/services/football_api.py'
+      - 'backend/app/**'
       - 'backend/tests/**'
       - '.github/workflows/backend-unit-tests.yml'
 
@@ -31,7 +31,10 @@ jobs:
       - name: Install minimal dependencies
         run: pip install requests python-dotenv
 
-      - name: Run football API regression tests
+      - name: Compile backend application
+        run: python -m compileall -q backend/app
+
+      - name: Run backend regression tests
         shell: bash
         run: |
           set -e
