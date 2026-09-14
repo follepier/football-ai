@@ -10,6 +10,37 @@ function PercentCard({ label, value }) {
   );
 }
 
+function formatMetric(value, suffix = "") {
+  if (value === null || value === undefined) return "n/d";
+  return `${value}${suffix}`;
+}
+
+function calcolaMedieContesto(matches, tipo) {
+  const filtrate = (matches || []).filter(
+    (match) => match.casa_trasferta === tipo
+  );
+
+  if (!filtrate.length) return null;
+
+  const media = (campo) => {
+    const totale = filtrate.reduce(
+      (somma, match) => somma + (Number(match[campo]) || 0),
+      0
+    );
+
+    return Math.round((totale / filtrate.length) * 100) / 100;
+  };
+
+  return {
+    partite: filtrate.length,
+    possesso: media("possesso"),
+    tiri_in_porta: media("tiri_in_porta"),
+    tiri_fuori: media("tiri_fuori"),
+    attacchi: media("attacchi"),
+    attacchi_pericolosi: media("attacchi_pericolosi"),
+  };
+}
+
 function MatchList({ matches, team }) {
   if (!matches?.length) return <p className="no-data">Nessun dato disponibile.</p>;
 
@@ -35,8 +66,35 @@ function MatchList({ matches, team }) {
             <span>🚩 {match.corner ?? 0} corner</span>
             <span>🟨 {match.ammonizioni ?? 0} ammonizioni</span>
           </div>
+          <div className="match-stats">
+            <span>📊 {formatMetric(match.possesso, "%")} possesso</span>
+            <span>🎯 {formatMetric(match.tiri_in_porta)} tiri in porta</span>
+            <span>↗️ {formatMetric(match.tiri_fuori)} tiri fuori</span>
+            <span>⚡ {formatMetric(match.attacchi)} attacchi</span>
+            <span>🔥 {formatMetric(match.attacchi_pericolosi)} att. pericolosi</span>
+          </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+function ContextStats({ title, stats }) {
+  return (
+    <div className="recent-team">
+      <h4>{title}</h4>
+      {!stats ? (
+        <p className="no-data">Nessuna partita disponibile nel contesto richiesto.</p>
+      ) : (
+        <div className="stats-grid">
+          <div className="stat-card"><span>📊 Possesso medio</span><strong>{formatMetric(stats.possesso, "%")}</strong></div>
+          <div className="stat-card"><span>🎯 Tiri in porta</span><strong>{formatMetric(stats.tiri_in_porta)}</strong></div>
+          <div className="stat-card"><span>↗️ Tiri fuori</span><strong>{formatMetric(stats.tiri_fuori)}</strong></div>
+          <div className="stat-card"><span>⚡ Attacchi</span><strong>{formatMetric(stats.attacchi)}</strong></div>
+          <div className="stat-card highlight"><span>🔥 Attacchi pericolosi</span><strong>{formatMetric(stats.attacchi_pericolosi)}</strong></div>
+        </div>
+      )}
+      {stats && <p className="no-data">Media calcolata su {stats.partite} partite nel contesto.</p>}
     </div>
   );
 }
@@ -88,6 +146,14 @@ function Home() {
   const over = analisi?.over_under || {};
   const golNoGol = analisi?.gol_no_gol || {};
   const volume = analisi?.volume_tiri || {};
+  const medieCasa = calcolaMedieContesto(
+    risultato?.ultime_partite?.casa,
+    "casa"
+  );
+  const medieOspite = calcolaMedieContesto(
+    risultato?.ultime_partite?.ospite,
+    "trasferta"
+  );
 
   return (
     <div className="app">
@@ -161,6 +227,17 @@ function Home() {
             </section>
 
             <section className="section">
+              <div className="section-title">
+                <span>📈</span>
+                <div><h3>Dati di gioco recenti</h3><p>Medie contestuali: casa in casa e ospite in trasferta</p></div>
+              </div>
+              <div className="recent-grid">
+                <ContextStats title={`🏠 ${analisi.casa} · in casa`} stats={medieCasa} />
+                <ContextStats title={`✈️ ${analisi.ospite} · in trasferta`} stats={medieOspite} />
+              </div>
+            </section>
+
+            <section className="section">
               <div className="section-title"><span>🎯</span><div><h3>1X2</h3><p>Probabilità degli esiti principali</p></div></div>
               <div className="prediction-grid">
                 <PercentCard label="1 · Casa" value={unoXDue["1"]} />
@@ -216,7 +293,7 @@ function Home() {
             </section>
 
             <section className="section">
-              <div className="section-title"><span>🔥</span><div><h3>Forma recente</h3><p>Ultime partite disponibili</p></div></div>
+              <div className="section-title"><span>🔥</span><div><h3>Forma recente</h3><p>Ultime partite disponibili con statistiche avanzate</p></div></div>
               <div className="recent-grid">
                 <div className="recent-team"><h4>🏠 {analisi.casa}</h4><MatchList matches={risultato.ultime_partite?.casa} team={analisi.casa} /></div>
                 <div className="recent-team"><h4>✈️ {analisi.ospite}</h4><MatchList matches={risultato.ultime_partite?.ospite} team={analisi.ospite} /></div>
