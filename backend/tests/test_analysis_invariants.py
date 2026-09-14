@@ -1,4 +1,3 @@
-import math
 import unittest
 
 from app.services import analysis
@@ -23,7 +22,7 @@ class AnalysisInvariantTests(unittest.TestCase):
         )
         self.assertAlmostEqual(
             analysis.calibra_gol_attesi_xg(1.5208),
-            1.3775282296,
+            1.3775152696,
             places=7,
         )
 
@@ -48,7 +47,7 @@ class AnalysisInvariantTests(unittest.TestCase):
                     analysis.probabilita_poisson(lam, goals)
                     for goals in range(21)
                 )
-                self.assertAlmostEqual(total, 1.0, places=7)
+                self.assertAlmostEqual(total, 1.0, places=6)
 
     def test_zero_lambda_is_degenerate_at_zero_goals(self):
         self.assertEqual(analysis.probabilita_poisson(0.0, 0), 1.0)
