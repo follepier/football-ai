@@ -1,14 +1,21 @@
 from fastapi import FastAPI, HTTPException
 
-from app.services.team_data import (
-    crea_dati_squadra,
-    calcola_medie_casa_trasferta,
+from app.services.analysis import calcola_analisi
+from app.services.competitions import (
+    DEFAULT_COMPETITION,
+    get_competition_config,
+    list_competitions,
 )
 from app.services.football_api import (
+    get_competition_teams,
     get_team_last_matches,
+    stessa_squadra,
     trasforma_partite_squadra,
 )
-from app.services.analysis import calcola_analisi
+from app.services.team_data import (
+    calcola_medie_casa_trasferta,
+    crea_dati_squadra,
+)
 
 app = FastAPI(
     title="Football AI",
@@ -24,6 +31,7 @@ def root():
         "status": "online",
         "version": "0.6.0",
         "engine": "statistical-probabilistic",
+        "multi_league": True,
     }
 
 
@@ -32,10 +40,50 @@ def health():
     return {"status": "healthy", "version": "0.6.0"}
 
 
+@app.get("/competitions")
+def competitions():
+    return {
+        "status": "success",
+        "competizioni": list_competitions(),
+    }
+
+
+@app.get("/competitions/{competizione}/teams")
+def competition_teams(competizione: str):
+    try:
+        config = get_competition_config(competizione)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=str(exc),
+        ) from exc
+
+    return {
+        "status": "success",
+        "competizione": {
+            "slug": config["slug"],
+            "name": config["name"],
+        },
+        "squadre": get_competition_teams(config["slug"]),
+    }
+
+
 @app.get("/analyze")
-def analyze(casa: str = "", ospite: str = ""):
+def analyze(
+    casa: str = "",
+    ospite: str = "",
+    competizione: str = DEFAULT_COMPETITION,
+):
     casa = casa.strip()
     ospite = ospite.strip()
+
+    try:
+        config = get_competition_config(competizione)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
 
     if not casa or not ospite:
         raise HTTPException(
@@ -43,14 +91,20 @@ def analyze(casa: str = "", ospite: str = ""):
             detail="Inserisci sia la squadra di casa sia la squadra ospite.",
         )
 
-    if casa.lower() == ospite.lower():
+    if stessa_squadra(casa, ospite):
         raise HTTPException(
             status_code=400,
             detail="Le due squadre devono essere diverse.",
         )
 
-    partite_casa = get_team_last_matches(casa)
-    partite_ospite = get_team_last_matches(ospite)
+    partite_casa = get_team_last_matches(
+        casa,
+        config["slug"],
+    )
+    partite_ospite = get_team_last_matches(
+        ospite,
+        config["slug"],
+    )
 
     ultime_partite_casa = trasforma_partite_squadra(
         partite_casa,
@@ -64,13 +118,19 @@ def analyze(casa: str = "", ospite: str = ""):
     if not ultime_partite_casa:
         raise HTTPException(
             status_code=404,
-            detail=f"Nessuna partita recente trovata per {casa}.",
+            detail=(
+                f"Nessuna partita recente trovata per {casa} "
+                f"in {config['name']}."
+            ),
         )
 
     if not ultime_partite_ospite:
         raise HTTPException(
             status_code=404,
-            detail=f"Nessuna partita recente trovata per {ospite}.",
+            detail=(
+                f"Nessuna partita recente trovata per {ospite} "
+                f"in {config['name']}."
+            ),
         )
 
     medie_casa = calcola_medie_casa_trasferta(
@@ -110,11 +170,28 @@ def analyze(casa: str = "", ospite: str = ""):
         medie_ospite["attacchi_pericolosi"],
     )
 
-    risultato = calcola_analisi(dati_casa, dati_ospite)
+    risultato = calcola_analisi(
+        dati_casa,
+        dati_ospite,
+        config["slug"],
+    )
 
     return {
         "status": "success",
         "partita": f"{casa} vs {ospite}",
+        "competizione": {
+            "slug": config["slug"],
+            "name": config["name"],
+            "country": config["country"],
+        },
+        "modello": {
+            "validato": config["model_validated"],
+            "stato": (
+                "validato"
+                if config["model_validated"]
+                else "sperimentale_in_validazione"
+            ),
+        },
         "analisi": risultato,
         "ultime_partite": {
             "casa": ultime_partite_casa,
