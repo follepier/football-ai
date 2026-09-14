@@ -36,13 +36,37 @@ class MainContractTests(unittest.TestCase):
         # Contract expected after introducing canonical team matching.
         # At present main.py compares only lower-cased strings, so aliases
         # such as "milan" and "AC Milan" can slip through as two teams.
+        raw = [{"id": 1}]
+        transformed = [{"casa_trasferta": "casa"}]
+
         for casa, ospite in [
             ("milan", "AC Milan"),
             ("inter", "Inter Milan"),
         ]:
             with self.subTest(casa=casa, ospite=ospite):
-                with self.assertRaises(HTTPException) as ctx:
-                    main.analyze(casa, ospite)
+                with patch.object(
+                    main,
+                    "get_team_last_matches",
+                    return_value=raw,
+                ), patch.object(
+                    main,
+                    "trasforma_partite_squadra",
+                    return_value=transformed,
+                ), patch.object(
+                    main,
+                    "calcola_medie_casa_trasferta",
+                    return_value=COMPLETE_AVERAGES,
+                ), patch.object(
+                    main,
+                    "crea_dati_squadra",
+                    side_effect=lambda nome, *_args: {"nome": nome},
+                ), patch.object(
+                    main,
+                    "calcola_analisi",
+                    return_value={"sentinel": 123},
+                ):
+                    with self.assertRaises(HTTPException) as ctx:
+                        main.analyze(casa, ospite)
                 self.assertEqual(ctx.exception.status_code, 400)
 
     def test_analyze_returns_404_when_home_team_has_no_recent_matches(self):
