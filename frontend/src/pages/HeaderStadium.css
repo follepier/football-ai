@@ -1,0 +1,110 @@
+/* Final panoramic stadium header override.
+   Loaded after the base stylesheet via !important rules so the header keeps
+   the existing Football AI branding while presenting a calmer stadium scene. */
+
+.header {
+  position: relative !important;
+  isolation: isolate !important;
+  overflow: hidden !important;
+  min-height: 230px !important;
+  display: flex !important;
+  align-items: center !important;
+  padding: 34px 30px !important;
+  background:
+    linear-gradient(
+      90deg,
+      rgba(2, 8, 23, 0.94) 0%,
+      rgba(3, 14, 35, 0.84) 28%,
+      rgba(4, 18, 42, 0.58) 50%,
+      rgba(4, 18, 42, 0.28) 72%,
+      rgba(4, 18, 42, 0.16) 100%
+    ),
+    url("https://images.pexels.com/photos/9561462/pexels-photo-9561462.jpeg?auto=compress&cs=tinysrgb&w=1800") center 54% / cover no-repeat !important;
+  box-shadow: 0 14px 34px rgba(2, 8, 23, 0.25) !important;
+}
+
+.header::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background:
+    radial-gradient(circle at 20% 14%, rgba(255,255,255,0.22) 0 2px, rgba(147,197,253,0.12) 3px 12px, transparent 42px),
+    radial-gradient(circle at 38% 10%, rgba(255,255,255,0.18) 0 2px, rgba(147,197,253,0.10) 3px 10px, transparent 38px),
+    radial-gradient(circle at 72% 12%, rgba(255,255,255,0.20) 0 2px, rgba(147,197,253,0.12) 3px 12px, transparent 42px),
+    linear-gradient(180deg, rgba(15,23,42,0.02) 0%, rgba(15,23,42,0.18) 100%);
+  pointer-events: none;
+}
+
+.header::after {
+  content: "" !important;
+  position: absolute !important;
+  z-index: -1 !important;
+  inset: 0 0 0 auto !important;
+  width: min(46vw, 680px) !important;
+  background:
+    linear-gradient(90deg, rgba(4,18,42,0) 0%, rgba(4,18,42,0.03) 18%, rgba(4,18,42,0.02) 100%),
+    url("https://images.pexels.com/photos/19436350/pexels-photo-19436350.jpeg?auto=compress&cs=tinysrgb&w=1200") right center / auto 100% no-repeat !important;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.24) 14%, rgba(0,0,0,0.78) 38%, #000 62%, #000 100%) !important;
+  mask-image: linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.24) 14%, rgba(0,0,0,0.78) 38%, #000 62%, #000 100%) !important;
+  opacity: 0.72 !important;
+  pointer-events: none !important;
+}
+
+.header .logo {
+  position: relative !important;
+  z-index: 2 !important;
+  width: 100% !important;
+  min-height: 150px !important;
+}
+
+.header .logo > div[aria-hidden="true"] {
+  display: none !important;
+}
+
+.header .logo h1 {
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.52) !important;
+}
+
+.header .logo p {
+  color: #e2e8f0 !important;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.55) !important;
+}
+
+.header .logo-ball {
+  background: rgba(7, 18, 38, 0.62) !important;
+  border-color: rgba(255, 255, 255, 0.22) !important;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.2) !important;
+  backdrop-filter: blur(7px);
+}
+
+@media (max-width: 760px) {
+  .header {
+    min-height: 205px !important;
+    padding: 24px 16px !important;
+    background-position: 56% center !important;
+  }
+
+  .header::after {
+    width: 54vw !important;
+    opacity: 0.58 !important;
+    background-size: auto 92% !important;
+  }
+
+  .header .logo {
+    min-height: 135px !important;
+  }
+}
+
+@media (max-width: 500px) {
+  .header {
+    min-height: 190px !important;
+    background-position: 48% center !important;
+  }
+
+  .header::after {
+    width: 60vw !important;
+    opacity: 0.42 !important;
+    background-size: auto 82% !important;
+  }
+}
