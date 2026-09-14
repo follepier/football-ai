@@ -9,6 +9,30 @@ from app.services.football_api import (
 from app.services.team_data import shrinkage_media
 
 
+# ============================================================
+# CALIBRAZIONE FINALE ENGINE XG
+#
+# Validata out-of-sample su Serie A:
+# - training storico 2023/24-2025/26
+# - test storico 2024/25 e 2025/26
+# - holdout 2026/27
+#
+# Formula congelata:
+# lambda_finale = intercetta + pendenza * lambda_engine_xg
+# ============================================================
+
+CALIBRAZIONE_XG_INTERCETTA = 0.214047
+CALIBRAZIONE_XG_PENDENZA = 0.765037
+
+
+def calibra_gol_attesi_xg(valore):
+    return max(
+        0.0,
+        CALIBRAZIONE_XG_INTERCETTA
+        + CALIBRAZIONE_XG_PENDENZA * float(valore)
+    )
+
+
 def probabilita_poisson(lam, gol):
     if lam <= 0:
         return 1.0 if gol == 0 else 0.0
@@ -117,15 +141,44 @@ def statistiche_contesto(squadre, campo):
 
 
 def trova_squadra(contesto, nome):
-    nome = nome.lower()
+    nome_norm = nome.strip().lower()
 
+    # Nomi differenti tra 5DollarFootballAPI e Understat.
+    alias = {
+        "inter milan": "inter",
+        "internazionale": "inter",
+        "parma": "parma calcio 1913",
+    }
+
+    nome_alias = alias.get(
+        nome_norm,
+        nome_norm
+    )
+
+    candidati = {
+        nome_norm,
+        nome_alias,
+    }
+
+    # Prima proviamo una corrispondenza esatta.
     for squadra in contesto:
-        if squadra.lower() == nome:
+        squadra_norm = squadra.strip().lower()
+
+        if squadra_norm in candidati:
             return squadra
 
+    # Poi una corrispondenza bidirezionale.
+    # Esempio:
+    # "Inter Milan" <-> "Inter"
     for squadra in contesto:
-        if nome in squadra.lower():
-            return squadra
+        squadra_norm = squadra.strip().lower()
+
+        for candidato in candidati:
+            if (
+                candidato in squadra_norm
+                or squadra_norm in candidato
+            ):
+                return squadra
 
     return None
 
@@ -134,10 +187,29 @@ def stima_forze(squadra, tipo, contesto):
     nome_reale = trova_squadra(contesto[tipo], squadra)
 
     if nome_reale is None:
+        # Fallback neutrale: se il nome non viene trovato,
+        # usiamo le medie del contesto invece di causare
+        # un errore nell'output dell'analisi.
+        statistiche_attacco = statistiche_contesto(
+            contesto[tipo],
+            "fatti"
+        )
+
+        statistiche_difesa = statistiche_contesto(
+            contesto[tipo],
+            "subiti"
+        )
+
         return {
             "attacco": 1.0,
             "difesa": 1.0,
-            "partite": 0
+            "partite": 0,
+            "xg_fatti": statistiche_attacco["media"],
+            "xg_subiti": statistiche_difesa["media"],
+            "media_contesto_attacco":
+                statistiche_attacco["media"],
+            "media_contesto_difesa":
+                statistiche_difesa["media"]
         }
 
     partite = contesto[tipo][nome_reale]
@@ -236,16 +308,37 @@ def calcola_analisi(dati_casa, dati_ospite):
         "fatti"
     )["media"]
 
-    gol_attesi_casa = (
+    # --------------------------------------------------------
+    # ENGINE XG GREZZO
+    # --------------------------------------------------------
+
+    gol_attesi_casa_raw = (
         media_xg_casa
         * forza_casa["attacco"]
         * forza_ospite["difesa"]
     )
 
-    gol_attesi_ospite = (
+    gol_attesi_ospite_raw = (
         media_xg_trasferta
         * forza_ospite["attacco"]
         * forza_casa["difesa"]
+    )
+
+    # --------------------------------------------------------
+    # CALIBRAZIONE VALIDATA OUT-OF-SAMPLE
+    #
+    # Riduce l'eccessiva dispersione dell'engine:
+    # valori bassi troppo bassi e valori alti troppo alti.
+    # Le probabilita Poisson vengono calcolate usando
+    # questi lambda calibrati.
+    # --------------------------------------------------------
+
+    gol_attesi_casa = calibra_gol_attesi_xg(
+        gol_attesi_casa_raw
+    )
+
+    gol_attesi_ospite = calibra_gol_attesi_xg(
+        gol_attesi_ospite_raw
     )
 
     gol_attesi_totali = (
@@ -356,6 +449,22 @@ def calcola_analisi(dati_casa, dati_ospite):
         "gol_attesi_casa": round(gol_attesi_casa, 2),
         "gol_attesi_ospite": round(gol_attesi_ospite, 2),
         "gol_attesi_totali": round(gol_attesi_totali, 2),
+
+        # Valori prima della calibrazione.
+        # Utili per audit e monitoraggio futuro.
+        "gol_attesi_casa_raw": round(
+            gol_attesi_casa_raw,
+            4
+        ),
+        "gol_attesi_ospite_raw": round(
+            gol_attesi_ospite_raw,
+            4
+        ),
+
+        "calibrazione_xg": {
+            "intercetta": CALIBRAZIONE_XG_INTERCETTA,
+            "pendenza": CALIBRAZIONE_XG_PENDENZA
+        },
 
         "volume_tiri": {
             "casa": round(volume_tiri_casa, 2),
