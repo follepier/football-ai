@@ -1,15 +1,15 @@
 :root {
-  --bg: #0B1120;
-  --card: #151E2E;
-  --primary: #2563EB;
-  --accent: #22D3EE;
-  --text: #F8FAFC;
-  --muted: #94A3B8;
-  --line: rgba(148, 163, 184, 0.18);
-  --line-strong: rgba(34, 211, 238, 0.26);
-  --surface-soft: rgba(11, 17, 32, 0.72);
-  --surface-blue: rgba(37, 99, 235, 0.12);
-  --surface-cyan: rgba(34, 211, 238, 0.10);
+  --bg: #090B10;
+  --card: #151922;
+  --primary: #2979FF;
+  --accent: #A3FF12;
+  --text: #F5F7FA;
+  --muted: rgba(245, 247, 250, 0.58);
+  --line: rgba(245, 247, 250, 0.12);
+  --line-strong: rgba(163, 255, 18, 0.26);
+  --surface-soft: rgba(9, 11, 16, 0.72);
+  --surface-blue: rgba(41, 121, 255, 0.13);
+  --surface-accent: rgba(163, 255, 18, 0.10);
 }
 
 html,
@@ -21,8 +21,8 @@ body,
 
 body {
   background:
-    radial-gradient(circle at 12% 0%, rgba(37, 99, 235, 0.15), transparent 32%),
-    radial-gradient(circle at 88% 8%, rgba(34, 211, 238, 0.08), transparent 26%),
+    radial-gradient(circle at 12% 0%, rgba(41, 121, 255, 0.16), transparent 32%),
+    radial-gradient(circle at 88% 8%, rgba(163, 255, 18, 0.07), transparent 26%),
     var(--bg);
   color: var(--text);
 }
@@ -32,16 +32,16 @@ body {
 }
 
 .header {
-  background: linear-gradient(135deg, #0B1120 0%, #151E2E 58%, #13233C 100%);
+  background: linear-gradient(135deg, #090B10 0%, #151922 60%, #101722 100%);
   color: var(--text);
-  border-bottom: 1px solid rgba(34, 211, 238, 0.14);
-  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.28);
+  border-bottom: 1px solid rgba(41, 121, 255, 0.20);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.34);
 }
 
 .logo-ball {
-  background: rgba(37, 99, 235, 0.14);
-  border-color: rgba(34, 211, 238, 0.24);
-  box-shadow: inset 0 0 22px rgba(34, 211, 238, 0.05);
+  background: rgba(41, 121, 255, 0.15);
+  border-color: rgba(163, 255, 18, 0.20);
+  box-shadow: inset 0 0 22px rgba(41, 121, 255, 0.06);
 }
 
 .logo h1,
@@ -64,11 +64,11 @@ footer p {
 
 .hero,
 .results {
-  background: rgba(21, 30, 46, 0.96);
+  background: rgba(21, 25, 34, 0.97);
   border-color: var(--line);
   box-shadow:
-    0 20px 54px rgba(0, 0, 0, 0.24),
-    0 0 0 1px rgba(37, 99, 235, 0.03);
+    0 20px 54px rgba(0, 0, 0, 0.30),
+    0 0 0 1px rgba(41, 121, 255, 0.03);
 }
 
 .hero::before {
@@ -77,9 +77,9 @@ footer p {
 
 .hero-badge {
   color: var(--accent);
-  background: rgba(34, 211, 238, 0.08);
-  border-color: rgba(34, 211, 238, 0.24);
-  box-shadow: inset 0 0 18px rgba(34, 211, 238, 0.04);
+  background: rgba(163, 255, 18, 0.08);
+  border-color: rgba(163, 255, 18, 0.24);
+  box-shadow: inset 0 0 18px rgba(163, 255, 18, 0.04);
 }
 
 .team-input label {
@@ -89,19 +89,19 @@ footer p {
 .team-input input {
   background: var(--bg);
   color: var(--text);
-  border-color: rgba(148, 163, 184, 0.24);
+  border-color: rgba(245, 247, 250, 0.18);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
 }
 
 .team-input input:hover {
-  border-color: rgba(37, 99, 235, 0.58);
+  border-color: rgba(41, 121, 255, 0.60);
 }
 
 .team-input input:focus {
   border-color: var(--accent);
   box-shadow:
-    0 0 0 4px rgba(34, 211, 238, 0.10),
-    0 0 24px rgba(37, 99, 235, 0.10);
+    0 0 0 4px rgba(163, 255, 18, 0.10),
+    0 0 24px rgba(41, 121, 255, 0.12);
 }
 
 .vs {
@@ -109,36 +109,36 @@ footer p {
 }
 
 .analyze-button {
-  background: linear-gradient(135deg, var(--primary) 0%, #1D4ED8 58%, var(--accent) 145%);
+  background: linear-gradient(135deg, var(--primary) 0%, #1F66E5 72%, var(--accent) 165%);
   color: var(--text);
-  box-shadow: 0 12px 30px rgba(37, 99, 235, 0.28);
+  box-shadow: 0 12px 30px rgba(41, 121, 255, 0.30);
 }
 
 .analyze-button:hover:not(:disabled) {
   box-shadow:
-    0 16px 34px rgba(37, 99, 235, 0.34),
-    0 0 22px rgba(34, 211, 238, 0.12);
+    0 16px 34px rgba(41, 121, 255, 0.38),
+    0 0 22px rgba(163, 255, 18, 0.12);
 }
 
 .error {
   background: rgba(127, 29, 29, 0.18);
-  color: #FECACA;
-  border-color: rgba(248, 113, 113, 0.30);
+  color: #F5F7FA;
+  border-color: rgba(245, 247, 250, 0.18);
 }
 
 .match-title {
   background:
-    linear-gradient(135deg, rgba(37, 99, 235, 0.24) 0%, rgba(21, 30, 46, 0.98) 52%, rgba(34, 211, 238, 0.10) 100%),
+    linear-gradient(135deg, rgba(41, 121, 255, 0.24) 0%, rgba(21, 25, 34, 0.98) 55%, rgba(163, 255, 18, 0.08) 100%),
     var(--card);
   color: var(--text);
-  border: 1px solid rgba(37, 99, 235, 0.20);
-  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.24);
+  border: 1px solid rgba(41, 121, 255, 0.24);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.28);
 }
 
 .match-title > span {
-  background: rgba(34, 211, 238, 0.10);
+  background: rgba(163, 255, 18, 0.10);
   color: var(--accent);
-  border: 1px solid rgba(34, 211, 238, 0.16);
+  border: 1px solid rgba(163, 255, 18, 0.18);
 }
 
 .section {
@@ -147,7 +147,7 @@ footer p {
 
 .section-title > span {
   background: var(--surface-blue);
-  border: 1px solid rgba(37, 99, 235, 0.16);
+  border: 1px solid rgba(41, 121, 255, 0.18);
 }
 
 .stat-card,
@@ -158,7 +158,7 @@ footer p {
 .match-card {
   border-color: var(--line);
   background: var(--bg);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.13);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
 }
 
 .stat-card > span,
@@ -178,13 +178,13 @@ footer p {
 }
 
 .stat-card.highlight {
-  background: linear-gradient(180deg, rgba(37, 99, 235, 0.16) 0%, rgba(11, 17, 32, 0.96) 100%);
-  border-color: rgba(37, 99, 235, 0.34);
+  background: linear-gradient(180deg, rgba(41, 121, 255, 0.17) 0%, rgba(9, 11, 16, 0.97) 100%);
+  border-color: rgba(41, 121, 255, 0.38);
 }
 
 .stat-card.main-highlight {
-  background: linear-gradient(180deg, rgba(34, 211, 238, 0.14) 0%, rgba(11, 17, 32, 0.96) 100%);
-  border-color: rgba(34, 211, 238, 0.36);
+  background: linear-gradient(180deg, rgba(163, 255, 18, 0.13) 0%, rgba(9, 11, 16, 0.97) 100%);
+  border-color: rgba(163, 255, 18, 0.38);
 }
 
 .prediction-card {
@@ -194,8 +194,10 @@ footer p {
 .prediction-card:hover,
 .ou-card:hover,
 .exact-card:hover {
-  border-color: rgba(34, 211, 238, 0.34);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.20);
+  border-color: rgba(163, 255, 18, 0.32);
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.24),
+    0 0 18px rgba(163, 255, 18, 0.05);
 }
 
 .prediction-card strong,
@@ -204,31 +206,28 @@ footer p {
 }
 
 .ou-card {
-  background: linear-gradient(180deg, rgba(21, 30, 46, 0.98) 0%, rgba(11, 17, 32, 0.98) 100%);
+  background: linear-gradient(180deg, rgba(21, 25, 34, 0.98) 0%, rgba(9, 11, 16, 0.98) 100%);
 }
 
-.ou-card strong {
-  color: var(--text);
-}
-
+.ou-card strong,
 .exact-card strong {
   color: var(--text);
 }
 
 .recent-team {
-  background: rgba(11, 17, 32, 0.62);
+  background: rgba(9, 11, 16, 0.64);
 }
 
 .recent-team .stat-card {
-  background: rgba(21, 30, 46, 0.90);
+  background: rgba(21, 25, 34, 0.92);
 }
 
 .match-card {
-  background: rgba(21, 30, 46, 0.92);
+  background: rgba(21, 25, 34, 0.94);
 }
 
 .match-main b {
-  background: linear-gradient(135deg, var(--primary), #1D4ED8);
+  background: linear-gradient(135deg, var(--primary), #1F66E5);
   color: var(--text);
 }
 
@@ -237,8 +236,8 @@ footer p {
 }
 
 .match-stats span {
-  background: rgba(11, 17, 32, 0.74);
-  border: 1px solid rgba(148, 163, 184, 0.08);
+  background: rgba(9, 11, 16, 0.78);
+  border: 1px solid rgba(245, 247, 250, 0.07);
 }
 
 footer strong {
@@ -246,6 +245,6 @@ footer strong {
 }
 
 ::selection {
-  background: rgba(34, 211, 238, 0.24);
-  color: var(--text);
+  background: rgba(163, 255, 18, 0.26);
+  color: #090B10;
 }
