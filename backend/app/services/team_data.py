@@ -32,7 +32,12 @@ def calcola_medie_partite(partite):
             "gol_fatti": 0,
             "gol_subiti": 0,
             "corner": 0,
-            "ammonizioni": 0
+            "ammonizioni": 0,
+            "possesso": 0,
+            "tiri_in_porta": 0,
+            "tiri_fuori": 0,
+            "attacchi": 0,
+            "attacchi_pericolosi": 0
         }
 
     numero_partite = len(partite)
