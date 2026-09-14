@@ -1,4 +1,7 @@
 import os
+import time
+from threading import Lock
+
 import requests
 from dotenv import load_dotenv
 
@@ -8,45 +11,142 @@ API_KEY = os.getenv("FOOTBALL_API_KEY")
 BASE_URL = "https://api.5dollarfootballapi.com/v1"
 SERIE_A_ID = 3405541143
 
+# Cache tecnica per ridurre chiamate duplicate al provider.
+#
+# Fixture di campionato:
+# 60 secondi, così risultati/calendario restano molto freschi.
+#
+# Statistiche fixture:
+# 1 ora. Attualmente vengono richieste soltanto per partite
+# già terminate tramite get_team_last_matches().
+FIXTURES_CACHE_TTL_SECONDS = 60
+FIXTURE_STATS_CACHE_TTL_SECONDS = 3600
+
+_FIXTURES_CACHE = {
+    "expires_at": 0.0,
+    "value": None,
+}
+
+_FIXTURE_STATS_CACHE = {}
+
+_FIXTURES_CACHE_LOCK = Lock()
+_FIXTURE_STATS_CACHE_LOCK = Lock()
+
+
+# ============================================================
+# MATCHING ROBUSTO NOMI SQUADRE
+#
+# Vietato usare confronti a sottostringa come:
+#     "milan" in "inter milan"
+#
+# perché produce falsi positivi.
+# ============================================================
+
+TEAM_ALIASES = {
+    "inter": {
+        "inter",
+        "inter milan",
+        "internazionale",
+        "fc internazionale",
+        "fc internazionale milano",
+    },
+    "ac milan": {
+        "milan",
+        "ac milan",
+        "a c milan",
+    },
+    "parma calcio 1913": {
+        "parma",
+        "parma calcio 1913",
+    },
+}
+
+
+def normalizza_nome_squadra(nome):
+    nome = str(nome).strip().lower()
+
+    # Normalizzazione minima della punteggiatura.
+    for carattere in [".", "-", "_"]:
+        nome = nome.replace(carattere, " ")
+
+    nome = " ".join(nome.split())
+
+    for canonico, aliases in TEAM_ALIASES.items():
+        if nome == canonico or nome in aliases:
+            return canonico
+
+    return nome
+
+
+def stessa_squadra(nome_1, nome_2):
+    return (
+        normalizza_nome_squadra(nome_1)
+        == normalizza_nome_squadra(nome_2)
+    )
+
 
 def get_serie_a_fixtures():
-    url = f"{BASE_URL}/leagues/{SERIE_A_ID}/fixtures"
+    now = time.monotonic()
 
-    headers = {
-        "Authorization": f"Bearer {API_KEY}"
-    }
+    with _FIXTURES_CACHE_LOCK:
+        cached = _FIXTURES_CACHE["value"]
 
-    tutte_le_partite = []
+        if (
+            cached is not None
+            and now < _FIXTURES_CACHE["expires_at"]
+        ):
+            return cached
 
-    for pagina in range(1, 4):
-        params = {
-            "page": pagina,
-            "per_page": 100
-        }
-
-        response = requests.get(
-            url,
-            headers=headers,
-            params=params,
-            timeout=15
+        url = (
+            f"{BASE_URL}/leagues/"
+            f"{SERIE_A_ID}/fixtures"
         )
 
-        response.raise_for_status()
+        headers = {
+            "Authorization": f"Bearer {API_KEY}"
+        }
 
-        dati = response.json()
-        partite = dati.get("data", [])
+        tutte_le_partite = []
 
-        tutte_le_partite.extend(partite)
+        for pagina in range(1, 4):
+            params = {
+                "page": pagina,
+                "per_page": 100
+            }
 
-        if len(partite) < 100:
-            break
+            response = requests.get(
+                url,
+                headers=headers,
+                params=params,
+                timeout=15
+            )
 
-    return {"data": tutte_le_partite}
+            response.raise_for_status()
+
+            dati = response.json()
+            partite = dati.get("data", [])
+
+            tutte_le_partite.extend(
+                partite
+            )
+
+            if len(partite) < 100:
+                break
+
+        risultato = {
+            "data": tutte_le_partite
+        }
+
+        _FIXTURES_CACHE["value"] = risultato
+        _FIXTURES_CACHE["expires_at"] = (
+            time.monotonic()
+            + FIXTURES_CACHE_TTL_SECONDS
+        )
+
+        return risultato
 
 def get_team_last_matches(team_name, limit=5):
     dati = get_serie_a_fixtures()["data"]
-
-    team_name = team_name.lower()
 
     partite = []
 
@@ -54,10 +154,13 @@ def get_team_last_matches(team_name, limit=5):
         if partita["status"] != "finished":
             continue
 
-        casa = partita["teams"]["home"]["name"].lower()
-        ospite = partita["teams"]["away"]["name"].lower()
+        casa = partita["teams"]["home"]["name"]
+        ospite = partita["teams"]["away"]["name"]
 
-        if team_name in casa or team_name in ospite:
+        if (
+            stessa_squadra(team_name, casa)
+            or stessa_squadra(team_name, ospite)
+        ):
             partite.append(partita)
 
     partite.sort(
@@ -67,46 +170,85 @@ def get_team_last_matches(team_name, limit=5):
 
     return partite[:limit]
 def trasforma_partite_squadra(partite, team_name):
-    team_name = team_name.lower()
-
     risultati = []
 
     for partita in partite:
         casa = partita["teams"]["home"]["name"]
         ospite = partita["teams"]["away"]["name"]
 
-        if team_name in casa.lower():
-            gol_fatti = partita["goals"]["home"]
-            gol_subiti = partita["goals"]["away"]
-            corner = partita["corners"]["home"]
-            ammonizioni = partita["cards"]["home"]["yellow"]
+        squadra_casa = stessa_squadra(
+            team_name,
+            casa
+        )
 
+        squadra_ospite = stessa_squadra(
+            team_name,
+            ospite
+        )
+
+        if not squadra_casa and not squadra_ospite:
+            # Sicurezza: una partita estranea non deve
+            # mai essere attribuita alla squadra richiesta.
+            continue
+
+        if squadra_casa:
+            lato = "home"
+            lato_avversario = "away"
+            avversario = ospite
+            casa_trasferta = "casa"
         else:
-            gol_fatti = partita["goals"]["away"]
-            gol_subiti = partita["goals"]["home"]
-            corner = partita["corners"]["away"]
-            ammonizioni = partita["cards"]["away"]["yellow"]
+            lato = "away"
+            lato_avversario = "home"
+            avversario = casa
+            casa_trasferta = "trasferta"
 
-        statistiche = get_fixture_stats(partita["id"])
+        gol_fatti = partita["goals"][lato]
+        gol_subiti = partita["goals"][lato_avversario]
+        corner = partita["corners"][lato]
+        ammonizioni = partita["cards"][lato]["yellow"]
 
-        if team_name in casa.lower():
-            possesso = statistiche.get("possession", {}).get("home", 0)
-            tiri_in_porta = statistiche.get("shots_on_target", {}).get("home", 0)
-            tiri_fuori = statistiche.get("shots_off_target", {}).get("home", 0)
-            attacchi = statistiche.get("attacks", {}).get("home", 0)
-            attacchi_pericolosi = statistiche.get("dangerous_attacks", {}).get("home", 0)
-        else:
-            possesso = statistiche.get("possession", {}).get("away", 0)
-            tiri_in_porta = statistiche.get("shots_on_target", {}).get("away", 0)
-            tiri_fuori = statistiche.get("shots_off_target", {}).get("away", 0)
-            attacchi = statistiche.get("attacks", {}).get("away", 0)
-            attacchi_pericolosi = statistiche.get("dangerous_attacks", {}).get("away", 0)
+        statistiche = get_fixture_stats(
+            partita["id"]
+        )
+
+        possesso = (
+            statistiche
+            .get("possession", {})
+            .get(lato, 0)
+        )
+
+        tiri_in_porta = (
+            statistiche
+            .get("shots_on_target", {})
+            .get(lato, 0)
+        )
+
+        tiri_fuori = (
+            statistiche
+            .get("shots_off_target", {})
+            .get(lato, 0)
+        )
+
+        attacchi = (
+            statistiche
+            .get("attacks", {})
+            .get(lato, 0)
+        )
+
+        attacchi_pericolosi = (
+            statistiche
+            .get("dangerous_attacks", {})
+            .get(lato, 0)
+        )
 
         risultati.append({
             "data": partita["kickoff_utc"],
-            "avversario": ospite if team_name in casa.lower() else casa,
+            "avversario": avversario,
             "competizione": partita["league"]["name"],
-            "risultato": f"{partita['goals']['home']}-{partita['goals']['away']}",
+            "risultato": (
+                f"{partita['goals']['home']}-"
+                f"{partita['goals']['away']}"
+            ),
             "gol_fatti": gol_fatti,
             "gol_subiti": gol_subiti,
             "corner": corner,
@@ -115,8 +257,10 @@ def trasforma_partite_squadra(partite, team_name):
             "tiri_in_porta": tiri_in_porta,
             "tiri_fuori": tiri_fuori,
             "attacchi": attacchi,
-            "attacchi_pericolosi": attacchi_pericolosi,
-            "casa_trasferta": "casa" if team_name in casa.lower() else "trasferta",
+            "attacchi_pericolosi":
+                attacchi_pericolosi,
+            "casa_trasferta":
+                casa_trasferta,
         })
 
     return risultati
@@ -159,7 +303,6 @@ def get_understat_team_matches(team_name, limit=5):
     response.raise_for_status()
 
     dati = response.json()
-    team_name = team_name.lower()
 
     partite = []
 
@@ -170,10 +313,20 @@ def get_understat_team_matches(team_name, limit=5):
         casa = partita["h"]["title"]
         ospite = partita["a"]["title"]
 
-        if team_name not in casa.lower() and team_name not in ospite.lower():
+        squadra_casa = stessa_squadra(
+            team_name,
+            casa
+        )
+
+        squadra_ospite = stessa_squadra(
+            team_name,
+            ospite
+        )
+
+        if not squadra_casa and not squadra_ospite:
             continue
 
-        if team_name in casa.lower():
+        if squadra_casa:
             xg_fatti = float(partita["xG"]["h"])
             xg_subiti = float(partita["xG"]["a"])
             casa_trasferta = "casa"
@@ -201,21 +354,54 @@ def get_understat_team_matches(team_name, limit=5):
 
 
 def get_fixture_stats(fixture_id):
-    url = f"{BASE_URL}/fixtures/{fixture_id}"
+    cache_key = str(fixture_id)
+    now = time.monotonic()
 
-    headers = {
-        "Authorization": f"Bearer {API_KEY}"
-    }
+    with _FIXTURE_STATS_CACHE_LOCK:
+        cached = _FIXTURE_STATS_CACHE.get(
+            cache_key
+        )
 
-    response = requests.get(
-        url,
-        headers=headers,
-        params={"include": "stats"},
-        timeout=15
-    )
+        if (
+            cached is not None
+            and now < cached["expires_at"]
+        ):
+            return cached["value"]
 
-    response.raise_for_status()
+        url = (
+            f"{BASE_URL}/fixtures/"
+            f"{fixture_id}"
+        )
 
-    dati = response.json()
+        headers = {
+            "Authorization": f"Bearer {API_KEY}"
+        }
 
-    return dati.get("data", {}).get("statistics", {})
+        response = requests.get(
+            url,
+            headers=headers,
+            params={"include": "stats"},
+            timeout=15
+        )
+
+        response.raise_for_status()
+
+        dati = response.json()
+
+        statistiche = (
+            dati
+            .get("data", {})
+            .get("statistics", {})
+        )
+
+        _FIXTURE_STATS_CACHE[
+            cache_key
+        ] = {
+            "expires_at": (
+                time.monotonic()
+                + FIXTURE_STATS_CACHE_TTL_SECONDS
+            ),
+            "value": statistiche,
+        }
+
+        return statistiche
