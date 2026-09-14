@@ -29,7 +29,7 @@ jobs:
           cache-dependency-path: backend/requirements.txt
 
       - name: Install minimal dependencies
-        run: pip install requests python-dotenv
+        run: pip install fastapi requests python-dotenv
 
       - name: Compile backend application
         run: python -m compileall -q backend/app
