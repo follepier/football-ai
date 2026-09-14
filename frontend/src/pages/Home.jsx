@@ -10,6 +10,87 @@ function PercentCard({ label, value }) {
   );
 }
 
+function GoalIllustration() {
+  return (
+    <div
+      aria-hidden="true"
+      style={{
+        flex: "0 0 300px",
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        maxWidth: "42vw",
+      }}
+    >
+      <svg
+        viewBox="0 0 340 210"
+        role="img"
+        style={{ width: "100%", maxWidth: 300, height: "auto", display: "block" }}
+      >
+        <defs>
+          <radialGradient id="goalGlow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#60a5fa" stopOpacity="0.34" />
+            <stop offset="100%" stopColor="#60a5fa" stopOpacity="0" />
+          </radialGradient>
+          <linearGradient id="ballFill" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#ffffff" />
+            <stop offset="100%" stopColor="#dbeafe" />
+          </linearGradient>
+        </defs>
+
+        <ellipse cx="230" cy="106" rx="105" ry="82" fill="url(#goalGlow)" />
+
+        <g opacity="0.98">
+          <path d="M173 45H290V165" fill="none" stroke="#ffffff" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M173 45L139 77V190H290V165" fill="none" stroke="#dbeafe" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
+
+          <g stroke="#93c5fd" strokeWidth="2" opacity="0.58">
+            <path d="M154 65V190" />
+            <path d="M174 48V190" />
+            <path d="M196 48V190" />
+            <path d="M218 48V190" />
+            <path d="M240 48V190" />
+            <path d="M262 48V190" />
+            <path d="M143 91H290" />
+            <path d="M140 116H290" />
+            <path d="M139 141H290" />
+            <path d="M139 166H290" />
+          </g>
+        </g>
+
+        <g opacity="0.8" stroke="#bfdbfe" strokeLinecap="round">
+          <path d="M50 90H93" strokeWidth="7" />
+          <path d="M63 73H104" strokeWidth="4" />
+          <path d="M68 108H103" strokeWidth="4" />
+        </g>
+
+        <g style={{ transformOrigin: "122px 90px", animation: "headerBallFloat 2.2s ease-in-out infinite" }}>
+          <circle cx="122" cy="90" r="24" fill="url(#ballFill)" stroke="#ffffff" strokeWidth="2" />
+          <polygon points="122,78 130,84 127,94 117,94 114,84" fill="#0f172a" />
+          <g stroke="#0f172a" strokeWidth="1.8" strokeLinecap="round">
+            <path d="M122 66V78" />
+            <path d="M101 88L114 84" />
+            <path d="M143 88L130 84" />
+            <path d="M109 107L117 94" />
+            <path d="M135 107L127 94" />
+          </g>
+        </g>
+
+        <path d="M150 80C164 69 181 69 194 81" fill="none" stroke="#ffffff" strokeWidth="3" strokeLinecap="round" opacity="0.9" />
+      </svg>
+      <style>{`
+        @keyframes headerBallFloat {
+          0%, 100% { transform: translate(0, 0) rotate(0deg); }
+          50% { transform: translate(7px, -3px) rotate(8deg); }
+        }
+        @media (max-width: 700px) {
+          .header .logo { justify-content: center !important; text-align: center; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
 function formatMetric(value, suffix = "") {
   if (value === null || value === undefined) return "n/d";
   return `${value}${suffix}`;
@@ -158,12 +239,18 @@ function Home() {
   return (
     <div className="app">
       <header className="header">
-        <div className="logo">
-          <div className="logo-ball">⚽</div>
-          <div>
-            <h1>Football AI</h1>
-            <p>Analisi statistica delle partite</p>
+        <div
+          className="logo"
+          style={{ justifyContent: "space-between", width: "100%", flexWrap: "wrap" }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <div className="logo-ball">⚽</div>
+            <div>
+              <h1>Football AI</h1>
+              <p>Analisi statistica delle partite</p>
+            </div>
           </div>
+          <GoalIllustration />
         </div>
       </header>
 
