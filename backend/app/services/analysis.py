@@ -2,34 +2,61 @@ import math
 import statistics
 from collections import defaultdict
 
+from app.services.competitions import (
+    DEFAULT_COMPETITION,
+    get_competition_config,
+)
 from app.services.football_api import (
-    calcola_media_gol_campionato,
-    get_understat_team_matches
+    get_understat_league_data,
+    normalizza_nome_squadra,
 )
 from app.services.team_data import shrinkage_media
 
 
 # ============================================================
-# CALIBRAZIONE FINALE ENGINE XG
+# CALIBRAZIONI ENGINE XG
 #
-# Validata out-of-sample su Serie A:
-# - training storico 2023/24-2025/26
-# - test storico 2024/25 e 2025/26
-# - holdout 2026/27
-#
-# Formula congelata:
-# lambda_finale = intercetta + pendenza * lambda_engine_xg
+# La calibrazione Serie A e' quella gia validata out-of-sample
+# nella v0.6.0. Gli altri campionati entrano inizialmente con
+# trasformazione identita' (lambda finale = lambda raw) finche'
+# non completiamo un backtest dedicato per ciascuna competizione.
 # ============================================================
+
+CALIBRAZIONI_XG = {
+    "serie-a": {
+        "intercetta": 0.214047,
+        "pendenza": 0.765037,
+        "validata": True,
+    },
+}
 
 CALIBRAZIONE_XG_INTERCETTA = 0.214047
 CALIBRAZIONE_XG_PENDENZA = 0.765037
 
 
-def calibra_gol_attesi_xg(valore):
+def get_calibrazione_xg(competizione=DEFAULT_COMPETITION):
+    config = get_competition_config(competizione)
+
+    return CALIBRAZIONI_XG.get(
+        config["slug"],
+        {
+            "intercetta": 0.0,
+            "pendenza": 1.0,
+            "validata": False,
+        },
+    )
+
+
+def calibra_gol_attesi_xg(
+    valore,
+    competizione=DEFAULT_COMPETITION,
+):
+    calibrazione = get_calibrazione_xg(competizione)
+
     return max(
         0.0,
-        CALIBRAZIONE_XG_INTERCETTA
-        + CALIBRAZIONE_XG_PENDENZA * float(valore)
+        calibrazione["intercetta"]
+        + calibrazione["pendenza"] * float(valore),
     )
 
 
@@ -40,31 +67,12 @@ def probabilita_poisson(lam, gol):
     return (math.exp(-lam) * (lam ** gol)) / math.factorial(gol)
 
 
-def costruisci_dati_xg():
-    partite = []
-
-    url_data = get_understat_team_matches
-
-    # Recuperiamo un campione ampio del campionato attraverso
-    # il singolo endpoint Understat già utilizzato dal progetto.
-    import requests
-
-    response = requests.get(
-        "https://understat.com/getLeagueData/Serie_A/2026",
-        headers={
-            "User-Agent": "Mozilla/5.0",
-            "X-Requested-With": "XMLHttpRequest",
-            "Referer": "https://understat.com/"
-        },
-        timeout=15
-    )
-
-    response.raise_for_status()
-    dati = response.json()
+def costruisci_dati_xg(competizione=DEFAULT_COMPETITION):
+    dati = get_understat_league_data(competizione)
 
     contesto = {
         "casa": defaultdict(list),
-        "trasferta": defaultdict(list)
+        "trasferta": defaultdict(list),
     }
 
     for partita in dati["dates"]:
@@ -79,12 +87,12 @@ def costruisci_dati_xg():
 
         contesto["casa"][casa].append({
             "fatti": xg_casa,
-            "subiti": xg_ospite
+            "subiti": xg_ospite,
         })
 
         contesto["trasferta"][ospite].append({
             "fatti": xg_ospite,
-            "subiti": xg_casa
+            "subiti": xg_casa,
         })
 
     return contesto
@@ -109,7 +117,7 @@ def statistiche_contesto(squadre, campo):
         return {
             "media": 0.0,
             "varianza_tra": 0.0,
-            "varianza_osservazioni": 0.0
+            "varianza_osservazioni": 0.0,
         }
 
     media = statistics.mean(medie)
@@ -120,8 +128,6 @@ def statistiche_contesto(squadre, campo):
     else:
         varianza_osservazioni = 0.0
 
-    # Correggiamo la varianza tra squadre per la variabilità
-    # dovuta al campionamento quando possibile.
     correzione = statistics.mean(
         varianza_osservazioni / len(squadre[nome])
         for nome in squadre
@@ -130,55 +136,35 @@ def statistiche_contesto(squadre, campo):
 
     varianza_tra = max(
         varianza_tra - correzione,
-        0.0
+        0.0,
     )
 
     return {
         "media": media,
         "varianza_tra": varianza_tra,
-        "varianza_osservazioni": varianza_osservazioni
+        "varianza_osservazioni": varianza_osservazioni,
     }
 
 
 def trova_squadra(contesto, nome):
-    nome_norm = nome.strip().lower()
+    nome_norm = normalizza_nome_squadra(nome)
 
-    # Nomi differenti tra 5DollarFootballAPI e Understat.
-    alias = {
-        "inter milan": "inter",
-        "internazionale": "inter",
-        "parma": "parma calcio 1913",
-    }
-
-    nome_alias = alias.get(
-        nome_norm,
-        nome_norm
-    )
-
-    candidati = {
-        nome_norm,
-        nome_alias,
-    }
-
-    # Prima proviamo una corrispondenza esatta.
+    # Prima corrispondenza normalizzata esatta.
     for squadra in contesto:
-        squadra_norm = squadra.strip().lower()
-
-        if squadra_norm in candidati:
+        if normalizza_nome_squadra(squadra) == nome_norm:
             return squadra
 
-    # Poi una corrispondenza bidirezionale.
-    # Esempio:
-    # "Inter Milan" <-> "Inter"
+    # Fallback bidirezionale per differenze innocue tra provider
+    # e Understat (es. suffissi FC). L'input del frontend viene
+    # comunque proposto dalla lista squadre del provider.
     for squadra in contesto:
-        squadra_norm = squadra.strip().lower()
+        squadra_norm = normalizza_nome_squadra(squadra)
 
-        for candidato in candidati:
-            if (
-                candidato in squadra_norm
-                or squadra_norm in candidato
-            ):
-                return squadra
+        if (
+            nome_norm in squadra_norm
+            or squadra_norm in nome_norm
+        ):
+            return squadra
 
     return None
 
@@ -187,17 +173,14 @@ def stima_forze(squadra, tipo, contesto):
     nome_reale = trova_squadra(contesto[tipo], squadra)
 
     if nome_reale is None:
-        # Fallback neutrale: se il nome non viene trovato,
-        # usiamo le medie del contesto invece di causare
-        # un errore nell'output dell'analisi.
         statistiche_attacco = statistiche_contesto(
             contesto[tipo],
-            "fatti"
+            "fatti",
         )
 
         statistiche_difesa = statistiche_contesto(
             contesto[tipo],
-            "subiti"
+            "subiti",
         )
 
         return {
@@ -206,22 +189,20 @@ def stima_forze(squadra, tipo, contesto):
             "partite": 0,
             "xg_fatti": statistiche_attacco["media"],
             "xg_subiti": statistiche_difesa["media"],
-            "media_contesto_attacco":
-                statistiche_attacco["media"],
-            "media_contesto_difesa":
-                statistiche_difesa["media"]
+            "media_contesto_attacco": statistiche_attacco["media"],
+            "media_contesto_difesa": statistiche_difesa["media"],
         }
 
     partite = contesto[tipo][nome_reale]
 
     statistiche_attacco = statistiche_contesto(
         contesto[tipo],
-        "fatti"
+        "fatti",
     )
 
     statistiche_difesa = statistiche_contesto(
         contesto[tipo],
-        "subiti"
+        "subiti",
     )
 
     numero_partite = len(partite)
@@ -239,7 +220,7 @@ def stima_forze(squadra, tipo, contesto):
         numero_partite,
         statistiche_attacco["media"],
         statistiche_attacco["varianza_tra"],
-        statistiche_attacco["varianza_osservazioni"]
+        statistiche_attacco["varianza_osservazioni"],
     )
 
     difesa_shrink = shrinkage_media(
@@ -247,7 +228,7 @@ def stima_forze(squadra, tipo, contesto):
         numero_partite,
         statistiche_difesa["media"],
         statistiche_difesa["varianza_tra"],
-        statistiche_difesa["varianza_osservazioni"]
+        statistiche_difesa["varianza_osservazioni"],
     )
 
     if statistiche_attacco["media"] > 0:
@@ -271,46 +252,41 @@ def stima_forze(squadra, tipo, contesto):
         "xg_fatti": attacco_shrink,
         "xg_subiti": difesa_shrink,
         "media_contesto_attacco": statistiche_attacco["media"],
-        "media_contesto_difesa": statistiche_difesa["media"]
+        "media_contesto_difesa": statistiche_difesa["media"],
     }
 
 
-def calcola_analisi(dati_casa, dati_ospite):
-    gol_casa = dati_casa.get("gol_fatti", 0)
-    gol_subiti_casa = dati_casa.get("gol_subiti", 0)
+def calcola_analisi(
+    dati_casa,
+    dati_ospite,
+    competizione=DEFAULT_COMPETITION,
+):
+    config = get_competition_config(competizione)
+    calibrazione = get_calibrazione_xg(config["slug"])
 
-    gol_ospite = dati_ospite.get("gol_fatti", 0)
-    gol_subiti_ospite = dati_ospite.get("gol_subiti", 0)
-
-    media_gol_campionato = calcola_media_gol_campionato()
-
-    contesto = costruisci_dati_xg()
+    contesto = costruisci_dati_xg(config["slug"])
 
     forza_casa = stima_forze(
         dati_casa["nome"],
         "casa",
-        contesto
+        contesto,
     )
 
     forza_ospite = stima_forze(
         dati_ospite["nome"],
         "trasferta",
-        contesto
+        contesto,
     )
 
     media_xg_casa = statistiche_contesto(
         contesto["casa"],
-        "fatti"
+        "fatti",
     )["media"]
 
     media_xg_trasferta = statistiche_contesto(
         contesto["trasferta"],
-        "fatti"
+        "fatti",
     )["media"]
-
-    # --------------------------------------------------------
-    # ENGINE XG GREZZO
-    # --------------------------------------------------------
 
     gol_attesi_casa_raw = (
         media_xg_casa
@@ -324,30 +300,20 @@ def calcola_analisi(dati_casa, dati_ospite):
         * forza_casa["difesa"]
     )
 
-    # --------------------------------------------------------
-    # CALIBRAZIONE VALIDATA OUT-OF-SAMPLE
-    #
-    # Riduce l'eccessiva dispersione dell'engine:
-    # valori bassi troppo bassi e valori alti troppo alti.
-    # Le probabilita Poisson vengono calcolate usando
-    # questi lambda calibrati.
-    # --------------------------------------------------------
-
     gol_attesi_casa = calibra_gol_attesi_xg(
-        gol_attesi_casa_raw
+        gol_attesi_casa_raw,
+        config["slug"],
     )
 
     gol_attesi_ospite = calibra_gol_attesi_xg(
-        gol_attesi_ospite_raw
+        gol_attesi_ospite_raw,
+        config["slug"],
     )
 
     gol_attesi_totali = (
         gol_attesi_casa + gol_attesi_ospite
     )
 
-    # Volume tiri pre-partita.
-    # Il differenziale è:
-    # volume casa - volume ospite
     volume_tiri_casa = (
         dati_casa.get("tiri_in_porta_medi", 0)
         + dati_casa.get("tiri_fuori_medi", 0)
@@ -369,22 +335,22 @@ def calcola_analisi(dati_casa, dati_ospite):
             probabilita = (
                 probabilita_poisson(
                     gol_attesi_casa,
-                    gol_c
+                    gol_c,
                 )
                 * probabilita_poisson(
                     gol_attesi_ospite,
-                    gol_o
+                    gol_o,
                 )
             )
 
             risultati.append({
                 "risultato": f"{gol_c}-{gol_o}",
-                "probabilita": probabilita
+                "probabilita": probabilita,
             })
 
     risultati.sort(
         key=lambda x: x["probabilita"],
-        reverse=True
+        reverse=True,
     )
 
     risultati_esatti = [
@@ -392,8 +358,8 @@ def calcola_analisi(dati_casa, dati_ospite):
             "risultato": r["risultato"],
             "probabilita": round(
                 r["probabilita"] * 100,
-                2
-            )
+                2,
+            ),
         }
         for r in risultati[:5]
     ]
@@ -426,7 +392,7 @@ def calcola_analisi(dati_casa, dati_ospite):
             if sum(
                 map(
                     int,
-                    r["risultato"].split("-")
+                    r["risultato"].split("-"),
                 )
             ) > soglia
         )
@@ -445,120 +411,107 @@ def calcola_analisi(dati_casa, dati_ospite):
     return {
         "casa": dati_casa["nome"],
         "ospite": dati_ospite["nome"],
-
+        "competizione": config["name"],
+        "competizione_slug": config["slug"],
         "gol_attesi_casa": round(gol_attesi_casa, 2),
         "gol_attesi_ospite": round(gol_attesi_ospite, 2),
         "gol_attesi_totali": round(gol_attesi_totali, 2),
-
-        # Valori prima della calibrazione.
-        # Utili per audit e monitoraggio futuro.
         "gol_attesi_casa_raw": round(
             gol_attesi_casa_raw,
-            4
+            4,
         ),
         "gol_attesi_ospite_raw": round(
             gol_attesi_ospite_raw,
-            4
+            4,
         ),
-
         "calibrazione_xg": {
-            "intercetta": CALIBRAZIONE_XG_INTERCETTA,
-            "pendenza": CALIBRAZIONE_XG_PENDENZA
+            "intercetta": calibrazione["intercetta"],
+            "pendenza": calibrazione["pendenza"],
+            "validata": calibrazione["validata"],
         },
-
         "volume_tiri": {
             "casa": round(volume_tiri_casa, 2),
             "ospite": round(volume_tiri_ospite, 2),
             "differenziale": round(
                 differenziale_volume_tiri,
-                2
-            )
+                2,
+            ),
         },
-
         "xg_casa_shrinkage": forza_casa["xg_fatti"],
         "xg_casa_subiti_shrinkage": forza_casa["xg_subiti"],
         "xg_ospite_shrinkage": forza_ospite["xg_fatti"],
         "xg_ospite_subiti_shrinkage": forza_ospite["xg_subiti"],
-
         "forza_attacco_casa": round(
-            forza_casa["attacco"], 4
+            forza_casa["attacco"], 4,
         ),
         "forza_difesa_casa": round(
-            forza_casa["difesa"], 4
+            forza_casa["difesa"], 4,
         ),
         "forza_attacco_ospite": round(
-            forza_ospite["attacco"], 4
+            forza_ospite["attacco"], 4,
         ),
         "forza_difesa_ospite": round(
-            forza_ospite["difesa"], 4
+            forza_ospite["difesa"], 4,
         ),
-
         "partite_casa_utilizzate": forza_casa["partite"],
         "partite_ospite_utilizzate": forza_ospite["partite"],
-
         "corner_casa": dati_casa.get(
-            "corner_medi", 0
+            "corner_medi", 0,
         ),
         "corner_ospite": dati_ospite.get(
-            "corner_medi", 0
+            "corner_medi", 0,
         ),
-
         "ammonizioni_casa": dati_casa.get(
-            "ammonizioni_medie", 0
+            "ammonizioni_medie", 0,
         ),
         "ammonizioni_ospite": dati_ospite.get(
-            "ammonizioni_medie", 0
+            "ammonizioni_medie", 0,
         ),
-
         "1x2": {
             "1": round(probabilita_1 * 100, 2),
             "X": round(probabilita_x * 100, 2),
-            "2": round(probabilita_2 * 100, 2)
+            "2": round(probabilita_2 * 100, 2),
         },
-
         "doppia_chance": {
             "1X": round(
                 (probabilita_1 + probabilita_x) * 100,
-                2
+                2,
             ),
             "X2": round(
                 (probabilita_x + probabilita_2) * 100,
-                2
+                2,
             ),
             "12": round(
                 (probabilita_1 + probabilita_2) * 100,
-                2
-            )
+                2,
+            ),
         },
-
         "over_under": {
             "over_1_5": round(over_15 * 100, 2),
             "under_1_5": round(
                 (1 - over_15) * 100,
-                2
+                2,
             ),
             "over_2_5": round(over_25 * 100, 2),
             "under_2_5": round(
                 (1 - over_25) * 100,
-                2
+                2,
             ),
             "over_3_5": round(over_35 * 100, 2),
             "under_3_5": round(
                 (1 - over_35) * 100,
-                2
-            )
+                2,
+            ),
         },
-
         "gol_no_gol": {
             "gol": round(
                 probabilita_gol * 100,
-                2
+                2,
             ),
             "no_gol": round(
                 (1 - probabilita_gol) * 100,
-                2
-            )
+                2,
+            ),
         },
-
-        "risultati_esatti": risultati_esatti
+        "risultati_esatti": risultati_esatti,
     }
