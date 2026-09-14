@@ -199,16 +199,13 @@ footer p {
 }
 
 .prediction-card strong,
+.ou-card strong,
 .exact-card b {
   color: var(--accent);
 }
 
 .ou-card {
   background: linear-gradient(180deg, rgba(21, 30, 46, 0.98) 0%, rgba(11, 17, 32, 0.98) 100%);
-}
-
-.ou-card strong {
-  color: var(--text);
 }
 
 .exact-card strong {
