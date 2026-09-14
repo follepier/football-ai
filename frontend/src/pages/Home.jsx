@@ -1,5 +1,14 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import "./Home.css";
+import "./MultiLeague.css";
+
+const COMPETIZIONI_FALLBACK = [
+  { slug: "serie-a", name: "Serie A", country: "Italia", model_validated: true },
+  { slug: "premier-league", name: "Premier League", country: "Inghilterra", model_validated: false },
+  { slug: "la-liga", name: "La Liga", country: "Spagna", model_validated: false },
+  { slug: "bundesliga", name: "Bundesliga", country: "Germania", model_validated: false },
+  { slug: "ligue-1", name: "Ligue 1", country: "Francia", model_validated: false },
+];
 
 function PercentCard({ label, value }) {
   return (
@@ -50,7 +59,7 @@ function MatchList({ matches, team }) {
         <div className="match-card" key={`${match.data}-${index}`}>
           <div className="match-header">
             <span>{match.data ? new Date(match.data).toLocaleDateString("it-IT") : "Data n/d"}</span>
-            <span>{match.competizione || "Serie A"}</span>
+            <span>{match.competizione || "Campionato"}</span>
           </div>
           <div className="match-main">
             <strong>
@@ -100,11 +109,61 @@ function ContextStats({ title, stats }) {
 }
 
 function Home() {
+  const [competizione, setCompetizione] = useState("serie-a");
+  const [competizioni, setCompetizioni] = useState(COMPETIZIONI_FALLBACK);
+  const [squadreDisponibili, setSquadreDisponibili] = useState([]);
   const [squadraCasa, setSquadraCasa] = useState("");
   const [squadraOspite, setSquadraOspite] = useState("");
   const [risultato, setRisultato] = useState(null);
   const [errore, setErrore] = useState("");
   const [caricamento, setCaricamento] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+
+    fetch("/api/competitions")
+      .then((response) => response.json())
+      .then((data) => {
+        if (active && Array.isArray(data.competizioni) && data.competizioni.length) {
+          setCompetizioni(data.competizioni);
+        }
+      })
+      .catch(() => {
+        // Manteniamo il fallback locale: la selezione resta utilizzabile.
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    setSquadreDisponibili([]);
+
+    fetch(`/api/competitions/${encodeURIComponent(competizione)}/teams`)
+      .then((response) => response.json())
+      .then((data) => {
+        if (active && Array.isArray(data.squadre)) {
+          setSquadreDisponibili(data.squadre);
+        }
+      })
+      .catch(() => {
+        // Il campo resta libero anche se il suggerimento squadre non e' disponibile.
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [competizione]);
+
+  function cambiaCompetizione(event) {
+    setCompetizione(event.target.value);
+    setSquadraCasa("");
+    setSquadraOspite("");
+    setRisultato(null);
+    setErrore("");
+  }
 
   async function analizzaPartita(event) {
     event?.preventDefault();
@@ -122,19 +181,20 @@ function Home() {
       const params = new URLSearchParams({
         casa: squadraCasa.trim(),
         ospite: squadraOspite.trim(),
+        competizione,
       });
 
       const response = await fetch(`/api/analyze?${params.toString()}`);
       const data = await response.json();
 
       if (!response.ok || data.status !== "success") {
-        throw new Error("Risposta non valida dal backend");
+        throw new Error(data.detail || "Impossibile completare l'analisi.");
       }
 
       setRisultato(data);
     } catch (error) {
       console.error(error);
-      setErrore("Impossibile completare l'analisi. Verifica che il backend sia attivo.");
+      setErrore(error.message || "Impossibile completare l'analisi.");
     } finally {
       setCaricamento(false);
     }
@@ -172,15 +232,32 @@ function Home() {
           <div className="hero-badge">⚡ AI MATCH ANALYZER</div>
           <h2>Analizza una partita</h2>
           <p>
-            Inserisci le due squadre per ottenere indicatori statistici e probabilità.
+            Seleziona il campionato e le due squadre per ottenere indicatori statistici e probabilità.
             I risultati sono stime del modello, non certezze.
           </p>
 
           <form className="teams-form" onSubmit={analizzaPartita}>
+            <div className="team-input competition-input">
+              <label>🏆 Campionato</label>
+              <select
+                aria-label="Campionato"
+                value={competizione}
+                onChange={cambiaCompetizione}
+              >
+                {competizioni.map((item) => (
+                  <option key={item.slug} value={item.slug}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div className="team-input">
               <label>🏠 Squadra casa</label>
               <input
                 aria-label="Squadra casa"
+                list="competition-teams"
+                autoComplete="off"
                 value={squadraCasa}
                 onChange={(e) => setSquadraCasa(e.target.value)}
               />
@@ -190,10 +267,19 @@ function Home() {
               <label>✈️ Squadra ospite</label>
               <input
                 aria-label="Squadra ospite"
+                list="competition-teams"
+                autoComplete="off"
                 value={squadraOspite}
                 onChange={(e) => setSquadraOspite(e.target.value)}
               />
             </div>
+
+            <datalist id="competition-teams">
+              {squadreDisponibili.map((squadra) => (
+                <option value={squadra} key={squadra} />
+              ))}
+            </datalist>
+
             <button className="analyze-button" type="submit" disabled={caricamento}>
               {caricamento ? "Analisi in corso..." : "Analizza partita →"}
             </button>
@@ -204,6 +290,19 @@ function Home() {
 
         {analisi && (
           <section className="results">
+            <div className="competition-chip">
+              🏆 {risultato.competizione?.name || analisi.competizione}
+            </div>
+
+            {risultato.modello?.validato === false && (
+              <div className="model-warning">
+                <strong>Modello sperimentale per questo campionato.</strong>
+                <span>
+                  I dati e l'engine xG sono attivi, ma la calibrazione probabilistica dedicata è ancora in validazione.
+                </span>
+              </div>
+            )}
+
             <div className="match-title">
               <div>🏠 {analisi.casa}</div>
               <span>VS</span>
