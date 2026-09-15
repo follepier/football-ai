@@ -50,6 +50,15 @@ export default function AdvancedMetrics({ metrics, home, away }) {
         </div>
       </div>
 
+      <div className="recent-team">
+        <p className="no-data">
+          <strong>PPDA</strong> · Passes Per Defensive Action: indica quanti passaggi vengono concessi all'avversario prima di un'azione difensiva. In generale, un valore più basso segnala un pressing più intenso; un valore più alto un pressing meno aggressivo.
+        </p>
+        <p className="no-data">
+          <strong>Field Tilt proxy</strong> · misura quanto una squadra riesce a portare il gioco in profondità rispetto all'avversario. Un valore sopra il 50% indica una maggiore presenza territoriale offensiva. Qui è stimato con la quota di deep completions sul totale deep + deep allowed, quindi non è il Field Tilt event-based puro.
+        </p>
+      </div>
+
       {metrics.status !== "success" ? (
         <p className="no-data">
           Metriche avanzate temporaneamente non disponibili. L'analisi principale resta valida.
@@ -61,9 +70,6 @@ export default function AdvancedMetrics({ metrics, home, away }) {
         </div>
       )}
 
-      <p className="no-data">
-        Field Tilt proxy = quota di deep completions della squadra sul totale deep + deep allowed: è un indicatore territoriale, non il Field Tilt event-based puro.
-      </p>
       <p className="no-data">
         I salvataggi su tiri in area restano in audit separato prima della pubblicazione.
       </p>
