@@ -7,6 +7,7 @@ on:
       - main
       - feature/multi-league-engine
       - feature/upcoming-fixtures-ui
+      - feature/site-polish
     paths:
       - 'backend/**'
       - 'frontend/**'
@@ -49,6 +50,15 @@ jobs:
             python verify_upcoming_fixtures_logic.py
           else
             echo "Upcoming fixtures verifier not present; skipping."
+          fi
+
+      - name: Verify advanced metrics logic
+        working-directory: backend
+        run: |
+          if [ -f verify_advanced_metrics_logic.py ]; then
+            python verify_advanced_metrics_logic.py
+          else
+            echo "Advanced metrics verifier not present; skipping."
           fi
 
       - name: Import FastAPI app
