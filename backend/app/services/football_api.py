@@ -38,6 +38,7 @@ _UNDERSTAT_CACHE_LOCK = Lock()
 # ============================================================
 
 TEAM_ALIASES = {
+    # Serie A
     "inter": {
         "inter",
         "inter milan",
@@ -54,16 +55,82 @@ TEAM_ALIASES = {
         "parma",
         "parma calcio 1913",
     },
-    "paris saint germain": {
-        "paris saint germain",
-        "paris saint-germain",
-        "psg",
+
+    # Premier League
+    "manchester city": {
+        "manchester city",
+        "man city",
     },
+    "manchester united": {
+        "manchester united",
+        "man utd",
+    },
+    "newcastle united": {
+        "newcastle united",
+        "newcastle",
+    },
+    "nottingham forest": {
+        "nottingham forest",
+        "nottm forest",
+    },
+
+    # La Liga
+    "alaves": {
+        "alaves",
+        "cd alaves",
+    },
+    "deportivo la coruna": {
+        "deportivo la coruna",
+        "deportivo a coruna",
+    },
+
+    # Bundesliga
     "bayern munich": {
         "bayern munich",
         "fc bayern munich",
         "bayern",
     },
+    "fc cologne": {
+        "fc cologne",
+        "cologne",
+    },
+    "hamburger sv": {
+        "hamburger sv",
+        "hamburg",
+    },
+    "mainz 05": {
+        "mainz 05",
+        "mainz",
+    },
+    "rasenballsport leipzig": {
+        "rasenballsport leipzig",
+        "rb leipzig",
+    },
+    "freiburg": {
+        "freiburg",
+        "sc freiburg",
+    },
+    "schalke 04": {
+        "schalke 04",
+        "schalke",
+    },
+    "hoffenheim": {
+        "hoffenheim",
+        "tsg hoffenheim",
+    },
+
+    # Ligue 1
+    "paris saint germain": {
+        "paris saint germain",
+        "paris saint-germain",
+        "psg",
+    },
+}
+
+# Se il provider restituisce due alias della stessa squadra, il frontend
+# deve mostrare una sola voce stabile e leggibile.
+PREFERRED_TEAM_DISPLAY_NAMES = {
+    "deportivo la coruna": "Deportivo La Coruna",
 }
 
 
@@ -161,17 +228,32 @@ def get_serie_a_fixtures():
 
 def get_competition_teams(competizione=DEFAULT_COMPETITION):
     partite = get_league_fixtures(competizione)["data"]
-    squadre = set()
+
+    # Deduplica per nome normalizzato, non per stringa grezza del provider.
+    # Esempio reale: "Deportivo A Coruna" e "Deportivo La Coruna"
+    # rappresentano la stessa squadra.
+    squadre_per_canonico = {}
 
     for partita in partite:
         teams = partita.get("teams", {})
 
         for lato in ("home", "away"):
             nome = teams.get(lato, {}).get("name")
-            if nome:
-                squadre.add(nome)
+            if not nome:
+                continue
 
-    return sorted(squadre, key=str.casefold)
+            canonico = normalizza_nome_squadra(nome)
+            display = PREFERRED_TEAM_DISPLAY_NAMES.get(canonico, nome)
+
+            if canonico not in squadre_per_canonico:
+                squadre_per_canonico[canonico] = display
+            elif canonico in PREFERRED_TEAM_DISPLAY_NAMES:
+                squadre_per_canonico[canonico] = display
+
+    return sorted(
+        squadre_per_canonico.values(),
+        key=str.casefold,
+    )
 
 
 def get_team_last_matches(
