@@ -17,6 +17,16 @@ function formatNumber(value, digits = 1) {
   return Number(value).toFixed(digits).replace(/\.0$/, "");
 }
 
+function formatSigned(value, digits = 2) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) {
+    return "n/d";
+  }
+
+  const number = Number(value);
+  const formatted = number.toFixed(digits).replace(/\.00$/, "").replace(/(\.\d)0$/, "$1");
+  return number > 0 ? `+${formatted}` : formatted;
+}
+
 function DistributionRow({ label, shots, share, xg }) {
   const width = Math.max(0, Math.min(100, Number(share) || 0));
 
@@ -33,7 +43,7 @@ function DistributionRow({ label, shots, share, xg }) {
   );
 }
 
-function ShotProfile({ data }) {
+function ShotProfile({ data, extras }) {
   const profile = data?.profile;
   if (!profile) return null;
 
@@ -59,6 +69,37 @@ function ShotProfile({ data }) {
           <small>ultime {data.matches ?? 0} partite</small>
         </div>
       </div>
+
+      {extras && (
+        <div className="shot-profile-block">
+          <h6>Qualità offensiva recente</h6>
+          <div className="shot-profile-summary shot-profile-summary-four">
+            <div className="shot-profile-card">
+              <span>npxG per partita</span>
+              <strong>{formatNumber(extras.non_penalty_xg_per_match, 2)}</strong>
+              <small>xG esclusi i rigori</small>
+            </div>
+            <div className="shot-profile-card">
+              <span>Gol − xG</span>
+              <strong>{formatSigned(extras.goals_minus_xg, 2)}</strong>
+              <small>positivo = più gol dell'xG prodotto</small>
+            </div>
+            <div className="shot-profile-card">
+              <span>xG palle inattive</span>
+              <strong>{formatNumber(extras.set_piece_xg_share_pct, 1)}%</strong>
+              <small>corner e punizioni, rigori esclusi</small>
+            </div>
+            <div className="shot-profile-card">
+              <span>Distanza media tiro</span>
+              <strong>{formatNumber(extras.average_shot_distance_m, 1)} m</strong>
+              <small>stima da coordinate Understat</small>
+            </div>
+          </div>
+          <p className="no-data shot-profile-note">
+            npxG e Gol − xG sono calcolati sulle ultime {extras.matches ?? data.matches ?? 0} partite. La distanza è una stima geometrica su campo standard 105 × 68 m; l'xG da palla inattiva esclude i rigori.
+          </p>
+        </div>
+      )}
 
       <div className="shot-profile-block">
         <h6>Distribuzione laterale dei tiri</h6>
@@ -103,7 +144,7 @@ function ShotProfile({ data }) {
   );
 }
 
-function ShotHeatmap({ data }) {
+function ShotHeatmap({ data, extras }) {
   if (!data || !data.shots || !Array.isArray(data.cells)) {
     return (
       <div className="shot-heatmap-wrap">
@@ -181,7 +222,7 @@ function ShotHeatmap({ data }) {
         Intensità basata sull'xG cumulato, con scala visiva non lineare per rendere leggibili anche le zone con pochi tiri o basso xG. Le celle senza tiri restano vuote. È una mappa dei tiri, non una heat map completa dei tocchi della squadra.
       </p>
 
-      <ShotProfile data={data} />
+      <ShotProfile data={data} extras={extras} />
     </div>
   );
 }
