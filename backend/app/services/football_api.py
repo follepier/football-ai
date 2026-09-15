@@ -1,3 +1,4 @@
+import json
 import os
 import time
 from datetime import datetime, timezone
@@ -17,10 +18,18 @@ API_KEY = os.getenv("FOOTBALL_API_KEY")
 BASE_URL = "https://api.5dollarfootballapi.com/v1"
 SERIE_A_ID = 3405541143
 
-# Cache tecnica per ridurre chiamate duplicate al provider.
-FIXTURES_CACHE_TTL_SECONDS = 60
-FIXTURE_STATS_CACHE_TTL_SECONDS = 3600
+# Cache tecnica per ridurre chiamate duplicate al provider gratuito.
+# Le fixture cambiano lentamente, mentre le statistiche delle partite concluse
+# sono sostanzialmente stabili: TTL piu' lunghi riducono drasticamente i 429.
+FIXTURES_CACHE_TTL_SECONDS = 900
+FIXTURES_STALE_TTL_SECONDS = 12 * 3600
+FIXTURE_STATS_CACHE_TTL_SECONDS = 30 * 24 * 3600
+FIXTURE_STATS_STALE_TTL_SECONDS = 365 * 24 * 3600
 UNDERSTAT_CACHE_TTL_SECONDS = 300
+PROVIDER_CACHE_DIR = os.getenv(
+    "FOOTBALL_AI_PROVIDER_CACHE_DIR",
+    "/tmp/football-ai-provider-cache",
+)
 
 # Le cache sono separate per competizione: questo evita che dati
 # di campionati diversi possano contaminarsi tra loro.
@@ -31,6 +40,87 @@ _UNDERSTAT_CACHE = {}
 _FIXTURES_CACHE_LOCK = Lock()
 _FIXTURE_STATS_CACHE_LOCK = Lock()
 _UNDERSTAT_CACHE_LOCK = Lock()
+
+
+# ============================================================
+# CACHE PROVIDER PERSISTENTE
+# ============================================================
+
+
+def _safe_cache_key(value):
+    return "".join(
+        char if char.isalnum() or char in ("-", "_") else "_"
+        for char in str(value)
+    )
+
+
+def _provider_cache_path(kind, key):
+    os.makedirs(PROVIDER_CACHE_DIR, exist_ok=True)
+    return os.path.join(
+        PROVIDER_CACHE_DIR,
+        f"{kind}_{_safe_cache_key(key)}.json",
+    )
+
+
+def _build_cache_entry(value, ttl_seconds, stale_ttl_seconds, saved_at=None):
+    saved_at = float(saved_at if saved_at is not None else time.time())
+    return {
+        "value": value,
+        "saved_at": saved_at,
+        "expires_at": saved_at + ttl_seconds,
+        "stale_until": saved_at + stale_ttl_seconds,
+    }
+
+
+def _load_provider_disk_cache(kind, key, ttl_seconds, stale_ttl_seconds):
+    path = _provider_cache_path(kind, key)
+
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, ValueError, TypeError):
+        return None
+
+    if not isinstance(payload, dict) or "value" not in payload:
+        return None
+
+    try:
+        saved_at = float(payload.get("saved_at"))
+    except (TypeError, ValueError):
+        return None
+
+    return _build_cache_entry(
+        payload["value"],
+        ttl_seconds,
+        stale_ttl_seconds,
+        saved_at=saved_at,
+    )
+
+
+def _save_provider_disk_cache(kind, key, value):
+    path = _provider_cache_path(kind, key)
+    temp_path = f"{path}.tmp"
+    payload = {
+        "saved_at": time.time(),
+        "value": value,
+    }
+
+    try:
+        with open(temp_path, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, ensure_ascii=False)
+        os.replace(temp_path, path)
+    except OSError:
+        try:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+        except OSError:
+            pass
+
+
+def _stale_cache_value(cached, now):
+    if cached is not None and now < cached.get("stale_until", 0):
+        return cached.get("value")
+    return None
 
 
 # ============================================================
@@ -164,13 +254,25 @@ def _current_understat_season():
 def get_league_fixtures(competizione=DEFAULT_COMPETITION):
     config = get_competition_config(competizione)
     cache_key = config["slug"]
-    now = time.monotonic()
+    now = time.time()
 
     with _FIXTURES_CACHE_LOCK:
         cached = _FIXTURES_CACHE.get(cache_key)
 
+        if cached is None:
+            cached = _load_provider_disk_cache(
+                "fixtures",
+                cache_key,
+                FIXTURES_CACHE_TTL_SECONDS,
+                FIXTURES_STALE_TTL_SECONDS,
+            )
+            if cached is not None:
+                _FIXTURES_CACHE[cache_key] = cached
+
         if cached is not None and now < cached["expires_at"]:
             return cached["value"]
+
+        stale_value = _stale_cache_value(cached, now)
 
         url = (
             f"{BASE_URL}/leagues/"
@@ -183,40 +285,45 @@ def get_league_fixtures(competizione=DEFAULT_COMPETITION):
 
         tutte_le_partite = []
 
-        for pagina in range(1, 6):
-            params = {
-                "page": pagina,
-                "per_page": 100,
-            }
+        try:
+            for pagina in range(1, 6):
+                params = {
+                    "page": pagina,
+                    "per_page": 100,
+                }
 
-            response = requests.get(
-                url,
-                headers=headers,
-                params=params,
-                timeout=15,
-            )
+                response = requests.get(
+                    url,
+                    headers=headers,
+                    params=params,
+                    timeout=15,
+                )
 
-            response.raise_for_status()
+                response.raise_for_status()
 
-            dati = response.json()
-            partite = dati.get("data", [])
-            tutte_le_partite.extend(partite)
+                dati = response.json()
+                partite = dati.get("data", [])
+                tutte_le_partite.extend(partite)
 
-            if len(partite) < 100:
-                break
+                if len(partite) < 100:
+                    break
+        except requests.RequestException:
+            if stale_value is not None:
+                return stale_value
+            raise
 
         risultato = {
             "competition": config["slug"],
             "data": tutte_le_partite,
         }
 
-        _FIXTURES_CACHE[cache_key] = {
-            "expires_at": (
-                time.monotonic()
-                + FIXTURES_CACHE_TTL_SECONDS
-            ),
-            "value": risultato,
-        }
+        entry = _build_cache_entry(
+            risultato,
+            FIXTURES_CACHE_TTL_SECONDS,
+            FIXTURES_STALE_TTL_SECONDS,
+        )
+        _FIXTURES_CACHE[cache_key] = entry
+        _save_provider_disk_cache("fixtures", cache_key, risultato)
 
         return risultato
 
@@ -314,37 +421,24 @@ def trasforma_partite_squadra(partite, team_name):
         corner = partita["corners"][lato]
         ammonizioni = partita["cards"][lato]["yellow"]
 
-        statistiche = get_fixture_stats(partita["id"])
+        try:
+            statistiche = get_fixture_stats(partita["id"])
+        except requests.RequestException:
+            # Le statistiche estese sono descrittive e non devono impedire
+            # l'analisi xG principale. Manteniamo esplicitamente il dato come
+            # mancante invece di trasformare un 429 in falsi zeri.
+            statistiche = None
 
-        possesso = (
-            statistiche
-            .get("possession", {})
-            .get(lato, 0)
-        )
+        def valore_statistica(nome):
+            if not isinstance(statistiche, dict):
+                return None
+            return statistiche.get(nome, {}).get(lato)
 
-        tiri_in_porta = (
-            statistiche
-            .get("shots_on_target", {})
-            .get(lato, 0)
-        )
-
-        tiri_fuori = (
-            statistiche
-            .get("shots_off_target", {})
-            .get(lato, 0)
-        )
-
-        attacchi = (
-            statistiche
-            .get("attacks", {})
-            .get(lato, 0)
-        )
-
-        attacchi_pericolosi = (
-            statistiche
-            .get("dangerous_attacks", {})
-            .get(lato, 0)
-        )
+        possesso = valore_statistica("possession")
+        tiri_in_porta = valore_statistica("shots_on_target")
+        tiri_fuori = valore_statistica("shots_off_target")
+        attacchi = valore_statistica("attacks")
+        attacchi_pericolosi = valore_statistica("dangerous_attacks")
 
         risultati.append({
             "data": partita["kickoff_utc"],
@@ -363,6 +457,7 @@ def trasforma_partite_squadra(partite, team_name):
             "tiri_fuori": tiri_fuori,
             "attacchi": attacchi,
             "attacchi_pericolosi": attacchi_pericolosi,
+            "statistiche_provider_disponibili": isinstance(statistiche, dict),
             "casa_trasferta": casa_trasferta,
         })
 
@@ -485,13 +580,25 @@ def get_understat_team_matches(
 
 def get_fixture_stats(fixture_id):
     cache_key = str(fixture_id)
-    now = time.monotonic()
+    now = time.time()
 
     with _FIXTURE_STATS_CACHE_LOCK:
         cached = _FIXTURE_STATS_CACHE.get(cache_key)
 
+        if cached is None:
+            cached = _load_provider_disk_cache(
+                "fixture_stats",
+                cache_key,
+                FIXTURE_STATS_CACHE_TTL_SECONDS,
+                FIXTURE_STATS_STALE_TTL_SECONDS,
+            )
+            if cached is not None:
+                _FIXTURE_STATS_CACHE[cache_key] = cached
+
         if cached is not None and now < cached["expires_at"]:
             return cached["value"]
+
+        stale_value = _stale_cache_value(cached, now)
 
         url = (
             f"{BASE_URL}/fixtures/"
@@ -502,16 +609,19 @@ def get_fixture_stats(fixture_id):
             "Authorization": f"Bearer {API_KEY}"
         }
 
-        response = requests.get(
-            url,
-            headers=headers,
-            params={"include": "stats"},
-            timeout=15,
-        )
-
-        response.raise_for_status()
-
-        dati = response.json()
+        try:
+            response = requests.get(
+                url,
+                headers=headers,
+                params={"include": "stats"},
+                timeout=15,
+            )
+            response.raise_for_status()
+            dati = response.json()
+        except requests.RequestException:
+            if stale_value is not None:
+                return stale_value
+            raise
 
         statistiche = (
             dati
@@ -519,12 +629,16 @@ def get_fixture_stats(fixture_id):
             .get("statistics", {})
         )
 
-        _FIXTURE_STATS_CACHE[cache_key] = {
-            "expires_at": (
-                time.monotonic()
-                + FIXTURE_STATS_CACHE_TTL_SECONDS
-            ),
-            "value": statistiche,
-        }
+        entry = _build_cache_entry(
+            statistiche,
+            FIXTURE_STATS_CACHE_TTL_SECONDS,
+            FIXTURE_STATS_STALE_TTL_SECONDS,
+        )
+        _FIXTURE_STATS_CACHE[cache_key] = entry
+        _save_provider_disk_cache(
+            "fixture_stats",
+            cache_key,
+            statistiche,
+        )
 
         return statistiche
