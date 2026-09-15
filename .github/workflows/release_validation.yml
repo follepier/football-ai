@@ -69,6 +69,10 @@ jobs:
         working-directory: backend
         run: python verify_understat_fallback_logic.py
 
+      - name: Verify persistent analysis cache
+        working-directory: backend
+        run: python verify_analysis_cache.py
+
       - name: Import FastAPI app
         working-directory: backend
         run: python -c "from app.main import app; assert app.version == '0.7.0'; print('PASS FastAPI app import')"
