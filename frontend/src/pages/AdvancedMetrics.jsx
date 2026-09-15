@@ -28,6 +28,7 @@ function TeamAdvancedMetrics({ title, data }) {
         <MetricCard label="🧱 PPDA" value={data.ppda} />
         <MetricCard label="🪄 xA medi" value={data.expected_assists_per_match} />
         <MetricCard label="🔑 Passaggi chiave medi" value={data.key_passes_per_match} />
+        <MetricCard label="📍 Field Tilt proxy" value={data.field_tilt_proxy} suffix="%" />
       </div>
       <p className="no-data">
         Media stagione corrente · {data.matches ?? 0} partite · fonte {data.source || "Understat"}.
@@ -45,7 +46,7 @@ export default function AdvancedMetrics({ metrics, home, away }) {
         <span>🧠</span>
         <div>
           <h3>Metriche avanzate</h3>
-          <p>PPDA, expected assist e passaggi chiave su dati Understat</p>
+          <p>PPDA, expected assist, passaggi chiave e indicatore territoriale su dati Understat</p>
         </div>
       </div>
 
@@ -61,7 +62,10 @@ export default function AdvancedMetrics({ metrics, home, away }) {
       )}
 
       <p className="no-data">
-        Field Tilt e salvataggi su tiri in area sono in audit separato prima della pubblicazione.
+        Field Tilt proxy = quota di deep completions della squadra sul totale deep + deep allowed: è un indicatore territoriale, non il Field Tilt event-based puro.
+      </p>
+      <p className="no-data">
+        I salvataggi su tiri in area restano in audit separato prima della pubblicazione.
       </p>
     </section>
   );
