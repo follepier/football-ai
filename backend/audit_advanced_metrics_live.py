@@ -33,6 +33,10 @@ def is_inside_penalty_area(shot):
     return x >= 0.833 and 0.211 <= y <= 0.789
 
 
+def saved_shots(shots):
+    return sum(1 for shot in shots if shot.get("result") == "SavedShot")
+
+
 def saved_shots_inside_box(shots):
     return sum(
         1
@@ -57,14 +61,21 @@ def fetch_match_shots(match_id):
     }
 
 
-def audit_competition(competition, sample_matches=3):
+def _round_or_none(value, digits=2):
+    if value is None:
+        return None
+    return round(float(value), digits)
+
+
+def audit_competition(competition, sample_matches=10):
     slug = competition["slug"]
     data = get_understat_league_data(slug)
 
     teams = data.get("teams", {})
     team_records = list(teams.values()) if isinstance(teams, dict) else teams
 
-    coverage = []
+    core_coverage = []
+    field_tilt_coverage = []
     field_tilt_values = []
 
     for team in team_records or []:
@@ -76,7 +87,7 @@ def audit_competition(competition, sample_matches=3):
             data,
             title,
         )
-        coverage.append(
+        core_coverage.append(
             all(
                 metrics.get(key) is not None
                 for key in (
@@ -86,7 +97,10 @@ def audit_competition(competition, sample_matches=3):
                 )
             )
         )
-        if metrics.get("field_tilt_proxy") is not None:
+
+        has_field_tilt = metrics.get("field_tilt_proxy") is not None
+        field_tilt_coverage.append(has_field_tilt)
+        if has_field_tilt:
             field_tilt_values.append(metrics["field_tilt_proxy"])
 
     dates = [
@@ -96,27 +110,37 @@ def audit_competition(competition, sample_matches=3):
     ]
     dates.sort(key=lambda row: row.get("datetime", ""), reverse=True)
 
-    saves_samples = []
+    saves_inside_samples = []
+    saves_total_samples = []
+
     for match in dates[:sample_matches]:
         shots = fetch_match_shots(match["id"])
-        # Home goalkeeper saves away shots; away goalkeeper saves home shots.
-        saves_samples.extend(
-            [
-                saved_shots_inside_box(shots["away"]),
-                saved_shots_inside_box(shots["home"]),
-            ]
-        )
 
-    coverage_rate = (
+        # Home goalkeeper faces away shots; away goalkeeper faces home shots.
+        goalkeeper_shot_sets = [shots["away"], shots["home"]]
+        for faced_shots in goalkeeper_shot_sets:
+            saves_inside_samples.append(saved_shots_inside_box(faced_shots))
+            saves_total_samples.append(saved_shots(faced_shots))
+
+    core_coverage_rate = (
         0.0
-        if not coverage
-        else 100 * sum(coverage) / len(coverage)
+        if not core_coverage
+        else 100 * sum(core_coverage) / len(core_coverage)
     )
+    field_tilt_coverage_rate = (
+        0.0
+        if not field_tilt_coverage
+        else 100 * sum(field_tilt_coverage) / len(field_tilt_coverage)
+    )
+
+    total_saves = sum(saves_total_samples)
+    total_inside_saves = sum(saves_inside_samples)
 
     return {
         "competition": competition["name"],
-        "teams": len(coverage),
-        "core_coverage_pct": round(coverage_rate, 1),
+        "teams": len(core_coverage),
+        "core_coverage_pct": round(core_coverage_rate, 1),
+        "field_tilt_coverage_pct": round(field_tilt_coverage_rate, 1),
         "field_tilt_min": min(field_tilt_values) if field_tilt_values else None,
         "field_tilt_max": max(field_tilt_values) if field_tilt_values else None,
         "field_tilt_mean": (
@@ -125,11 +149,27 @@ def audit_competition(competition, sample_matches=3):
             else None
         ),
         "saves_in_box_sample_mean": (
-            round(statistics.mean(saves_samples), 2)
-            if saves_samples
+            round(statistics.mean(saves_inside_samples), 2)
+            if saves_inside_samples
             else None
         ),
-        "saves_sample_goalkeepers": len(saves_samples),
+        "saves_in_box_sample_median": (
+            _round_or_none(statistics.median(saves_inside_samples))
+            if saves_inside_samples
+            else None
+        ),
+        "saves_in_box_sample_min": (
+            min(saves_inside_samples) if saves_inside_samples else None
+        ),
+        "saves_in_box_sample_max": (
+            max(saves_inside_samples) if saves_inside_samples else None
+        ),
+        "saves_inside_box_share_of_all_saves_pct": (
+            None
+            if total_saves <= 0
+            else round(100 * total_inside_saves / total_saves, 1)
+        ),
+        "saves_sample_goalkeepers": len(saves_inside_samples),
     }
 
 
@@ -138,19 +178,19 @@ def main():
     parser.add_argument(
         "--sample-matches",
         type=int,
-        default=3,
+        default=10,
         help="Recent finished matches sampled per competition for saves audit.",
     )
     args = parser.parse_args()
 
     print("Advanced metrics live audit")
-    print("Field Tilt remains a proxy based on deep-completion share.")
-    print("Saves-in-box remains audit-only pending coordinate validation.\n")
+    print("Field Tilt remains an explicitly labelled proxy based on deep-completion share.")
+    print("Saves-in-box remains audit-only pending broader coordinate validation.\n")
 
     for competition in list_competitions():
         result = audit_competition(
             competition,
-            sample_matches=max(1, min(args.sample_matches, 5)),
+            sample_matches=max(1, min(args.sample_matches, 20)),
         )
         print(result)
 
