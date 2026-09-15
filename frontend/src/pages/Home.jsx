@@ -34,12 +34,19 @@ function calcolaMedieContesto(matches, tipo) {
   if (!filtrate.length) return null;
 
   const media = (campo) => {
-    const totale = filtrate.reduce(
-      (somma, match) => somma + (Number(match[campo]) || 0),
-      0
-    );
+    const valori = filtrate
+      .map((match) => match[campo])
+      .filter(
+        (value) => value !== null
+          && value !== undefined
+          && Number.isFinite(Number(value))
+      )
+      .map(Number);
 
-    return Math.round((totale / filtrate.length) * 100) / 100;
+    if (!valori.length) return null;
+
+    const totale = valori.reduce((somma, value) => somma + value, 0);
+    return Math.round((totale / valori.length) * 100) / 100;
   };
 
   return {
@@ -105,7 +112,11 @@ function ContextStats({ title, stats }) {
           <div className="stat-card highlight"><span>🔥 Attacchi pericolosi</span><strong>{formatMetric(stats.attacchi_pericolosi)}</strong></div>
         </div>
       )}
-      {stats && <p className="no-data">Media calcolata su {stats.partite} partite nel contesto.</p>}
+      {stats && (
+        <p className="no-data">
+          Partite recenti nel contesto: {stats.partite}. I dati non disponibili sono esclusi dalle medie.
+        </p>
+      )}
     </div>
   );
 }
@@ -161,7 +172,20 @@ function Home() {
       });
 
       const response = await fetch(`/api/analyze?${params.toString()}`);
-      const data = await response.json();
+      const rawBody = await response.text();
+      let data = {};
+
+      if (rawBody) {
+        try {
+          data = JSON.parse(rawBody);
+        } catch {
+          throw new Error(
+            response.ok
+              ? "Il server ha restituito una risposta non valida."
+              : `Errore del server (${response.status}). Riprova tra poco.`
+          );
+        }
+      }
 
       if (!response.ok || data.status !== "success") {
         throw new Error(data.detail || "Impossibile completare l'analisi.");
@@ -330,9 +354,9 @@ function Home() {
             <section className="section">
               <div className="section-title"><span>🎯</span><div><h3>Volume tiri</h3><p>Indicatore pre-partita disponibile nel modello</p></div></div>
               <div className="stats-grid">
-                <div className="stat-card"><span>🏠 Volume casa</span><strong>{volume.casa ?? 0}</strong></div>
-                <div className="stat-card"><span>✈️ Volume ospite</span><strong>{volume.ospite ?? 0}</strong></div>
-                <div className="stat-card highlight"><span>↔️ Differenziale</span><strong>{volume.differenziale ?? 0}</strong></div>
+                <div className="stat-card"><span>🏠 Volume casa</span><strong>{formatMetric(volume.casa)}</strong></div>
+                <div className="stat-card"><span>✈️ Volume ospite</span><strong>{formatMetric(volume.ospite)}</strong></div>
+                <div className="stat-card highlight"><span>↔️ Differenziale</span><strong>{formatMetric(volume.differenziale)}</strong></div>
               </div>
             </section>
 
