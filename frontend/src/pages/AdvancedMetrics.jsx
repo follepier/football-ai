@@ -29,9 +29,13 @@ function TeamAdvancedMetrics({ title, data }) {
         <MetricCard label="🪄 xA medi" value={data.expected_assists_per_match} />
         <MetricCard label="🔑 Passaggi chiave medi" value={data.key_passes_per_match} />
         <MetricCard label="📍 Field Tilt proxy" value={data.field_tilt_proxy} suffix="%" />
+        <MetricCard label="🧤 Salvataggi in area" value={data.saves_inside_box_per_match} />
       </div>
       <p className="no-data">
-        Media stagione corrente · {data.matches ?? 0} partite · fonte {data.source || "Understat"}.
+        PPDA, xA, passaggi chiave e Field Tilt: stagione corrente · {data.matches ?? 0} partite · fonte {data.source || "Understat"}.
+      </p>
+      <p className="no-data">
+        Salvataggi in area: media sulle ultime {data.saves_inside_box_matches ?? 0} partite disponibili.
       </p>
     </div>
   );
@@ -46,7 +50,7 @@ export default function AdvancedMetrics({ metrics, home, away }) {
         <span>🧠</span>
         <div>
           <h3>Metriche avanzate</h3>
-          <p>PPDA, expected assist, passaggi chiave e indicatore territoriale su dati Understat</p>
+          <p>PPDA, expected assist, passaggi chiave, territorio e salvataggi su dati Understat</p>
         </div>
       </div>
 
@@ -56,6 +60,9 @@ export default function AdvancedMetrics({ metrics, home, away }) {
         </p>
         <p className="no-data">
           <strong>Field Tilt proxy</strong> · misura quanto una squadra riesce a portare il gioco in profondità rispetto all'avversario. Un valore sopra il 50% indica una maggiore presenza territoriale offensiva. Qui è stimato con la quota di deep completions sul totale deep + deep allowed, quindi non è il Field Tilt event-based puro.
+        </p>
+        <p className="no-data">
+          <strong>Salvataggi in area</strong> · media dei tiri avversari partiti dall'interno dell'area e respinti dal portiere nelle ultime partite disponibili. È una metrica descrittiva e non modifica ancora il motore predittivo.
         </p>
       </div>
 
@@ -69,10 +76,6 @@ export default function AdvancedMetrics({ metrics, home, away }) {
           <TeamAdvancedMetrics title={`✈️ ${away}`} data={metrics.away} />
         </div>
       )}
-
-      <p className="no-data">
-        I salvataggi su tiri in area restano in audit separato prima della pubblicazione.
-      </p>
     </section>
   );
 }
