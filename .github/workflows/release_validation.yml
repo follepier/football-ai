@@ -65,6 +65,10 @@ jobs:
         working-directory: backend
         run: python verify_provider_resilience.py
 
+      - name: Verify Understat fallback logic
+        working-directory: backend
+        run: python verify_understat_fallback_logic.py
+
       - name: Import FastAPI app
         working-directory: backend
         run: python -c "from app.main import app; assert app.version == '0.7.0'; print('PASS FastAPI app import')"
