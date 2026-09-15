@@ -4,7 +4,9 @@ on:
   workflow_dispatch:
   push:
     branches:
+      - main
       - feature/multi-league-engine
+      - feature/upcoming-fixtures-ui
     paths:
       - 'backend/**'
       - 'frontend/**'
@@ -39,6 +41,15 @@ jobs:
       - name: Verify v0.7.0 multi-league release configuration
         working-directory: backend
         run: python verify_multileague_release.py
+
+      - name: Verify upcoming fixtures logic
+        working-directory: backend
+        run: |
+          if [ -f verify_upcoming_fixtures_logic.py ]; then
+            python verify_upcoming_fixtures_logic.py
+          else
+            echo "Upcoming fixtures verifier not present; skipping."
+          fi
 
       - name: Import FastAPI app
         working-directory: backend
