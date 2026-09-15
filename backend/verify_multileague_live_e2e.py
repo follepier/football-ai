@@ -155,7 +155,25 @@ def validate_analysis(slug: str, payload: dict):
     return analysis, recent
 
 
+def requested_leagues():
+    requested = tuple(sys.argv[1:])
+    if not requested:
+        return LEAGUES
+
+    invalid = [slug for slug in requested if slug not in LEAGUES]
+    if invalid:
+        valid = ", ".join(LEAGUES)
+        raise SystemExit(
+            f"Campionato/i non valido/i: {', '.join(invalid)}\n"
+            f"Valori ammessi: {valid}"
+        )
+
+    # Mantiene l'ordine richiesto eliminando eventuali duplicati.
+    return tuple(dict.fromkeys(requested))
+
+
 def main():
+    selected_leagues = requested_leagues()
     client = TestClient(app)
     failures = []
 
@@ -171,10 +189,11 @@ def main():
 
     print("===== FOOTBALL AI v0.7.0 · LIVE MULTI-LEAGUE E2E =====")
     print("Usa provider reale + Understat reale; nessun mock.")
-    print("Una analisi live per ciascuno dei cinque campionati.\n")
-    print(f"PASS /health version={EXPECTED_VERSION}\n")
+    print("Una analisi live per ciascun campionato richiesto.\n")
+    print(f"PASS /health version={EXPECTED_VERSION}")
+    print(f"Campionati richiesti: {', '.join(selected_leagues)}\n")
 
-    for index, slug in enumerate(LEAGUES, start=1):
+    for index, slug in enumerate(selected_leagues, start=1):
         name = COMPETITIONS[slug]["name"]
         print("=" * 84)
         print(f"{name.upper()} ({slug})")
@@ -245,8 +264,9 @@ def main():
             failures.append((slug, repr(exc)))
             print(f"FAIL {name}: {exc!r}")
 
-        if index < len(LEAGUES):
-            # Piccola pausa per non concentrare inutilmente le chiamate al provider.
+        if index < len(selected_leagues):
+            # Pausa minima: per quote provider strette e' preferibile invocare
+            # questo audit su un singolo campionato per processo.
             time.sleep(1.0)
 
     print("\n" + "=" * 84)
@@ -257,7 +277,7 @@ def main():
         print("Nessun errore viene mascherato o sostituito con valori zero.")
         sys.exit(1)
 
-    print("PASS LIVE E2E: tutti e cinque i campionati")
+    print("PASS LIVE E2E: tutti i campionati richiesti")
     print("Provider, Understat, calibrazione, mercati e statistiche recenti coerenti.")
 
 
