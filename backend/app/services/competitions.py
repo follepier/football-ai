@@ -15,7 +15,7 @@ COMPETITIONS = {
         "country": "Inghilterra",
         "provider_league_id": 4160026622,
         "understat_league": "EPL",
-        "model_validated": False,
+        "model_validated": True,
     },
     "la-liga": {
         "slug": "la-liga",
@@ -23,7 +23,7 @@ COMPETITIONS = {
         "country": "Spagna",
         "provider_league_id": 4212821298,
         "understat_league": "La_liga",
-        "model_validated": False,
+        "model_validated": True,
     },
     "bundesliga": {
         "slug": "bundesliga",
@@ -31,7 +31,7 @@ COMPETITIONS = {
         "country": "Germania",
         "provider_league_id": 686337048,
         "understat_league": "Bundesliga",
-        "model_validated": False,
+        "model_validated": True,
     },
     "ligue-1": {
         "slug": "ligue-1",
@@ -39,7 +39,7 @@ COMPETITIONS = {
         "country": "Francia",
         "provider_league_id": 3614399544,
         "understat_league": "Ligue_1",
-        "model_validated": False,
+        "model_validated": True,
     },
 }
 
