@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
 
+from app.services.football_api import normalizza_nome_squadra
+
 
 CACHE_SCHEMA_VERSION = 1
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -36,8 +38,8 @@ def build_analysis_cache_key(competition, home_team, away_team, season=None):
             str(CACHE_SCHEMA_VERSION),
             str(season),
             _normalize(competition),
-            _normalize(home_team),
-            _normalize(away_team),
+            normalizza_nome_squadra(home_team),
+            normalizza_nome_squadra(away_team),
         ]
     )
     digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
