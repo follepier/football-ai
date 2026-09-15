@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import "./Home.css";
 import "./MultiLeague.css";
 import UpcomingFixtures from "./UpcomingFixtures";
+import AdvancedMetrics from "./AdvancedMetrics";
 
 const COMPETIZIONI_FALLBACK = [
   { slug: "serie-a", name: "Serie A", country: "Italia", model_validated: true },
@@ -284,6 +285,12 @@ function Home() {
                 <ContextStats title={`✈️ ${analisi.ospite} · in trasferta`} stats={medieOspite} />
               </div>
             </section>
+
+            <AdvancedMetrics
+              metrics={risultato.metriche_avanzate}
+              home={analisi.casa}
+              away={analisi.ospite}
+            />
 
             <section className="section">
               <div className="section-title"><span>🎯</span><div><h3>1X2</h3><p>Probabilità degli esiti principali</p></div></div>
