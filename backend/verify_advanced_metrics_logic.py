@@ -4,6 +4,7 @@ from app.services.advanced_stats import (
     is_inside_penalty_area,
     saved_shots_inside_box,
 )
+from app.services.shot_extras import calculate_shot_extras_from_shots
 
 
 def main():
@@ -124,6 +125,35 @@ def main():
     assert profile["situations"][0]["situation"] == "OpenPlay"
     assert profile["situations"][0]["shots"] == 3
     assert profile["situations"][0]["share_pct"] == 60.0
+
+    extras = calculate_shot_extras_from_shots(shots, matches_used=2)
+    assert extras["goals"] == 1
+    assert extras["xg_total"] == 1.05
+    assert extras["non_penalty_xg"] == 1.05
+    assert extras["non_penalty_xg_per_match"] == 0.53
+    assert extras["goals_minus_xg"] == -0.05
+    assert extras["set_piece_xg"] == 0.25
+    assert extras["set_piece_xg_share_pct"] == 23.8
+    assert extras["average_shot_distance_m"] == 21.1
+    assert extras["distance_shots"] == 5
+
+    penalty_shots = shots + [
+        {
+            "X": "0.885",
+            "Y": "0.50",
+            "result": "Goal",
+            "xG": "0.76",
+            "situation": "Penalty",
+        }
+    ]
+    penalty_extras = calculate_shot_extras_from_shots(
+        penalty_shots,
+        matches_used=2,
+    )
+    assert penalty_extras["xg_total"] == 1.81
+    assert penalty_extras["non_penalty_xg"] == 1.05
+    assert penalty_extras["non_penalty_xg_per_match"] == 0.53
+    assert penalty_extras["set_piece_xg"] == 0.25
 
     print("PASS advanced metrics deterministic logic")
 
