@@ -26,6 +26,19 @@ function formatMetric(value, suffix = "") {
   return `${value}${suffix}`;
 }
 
+function formatSavedAt(value) {
+  if (!value) return "orario non disponibile";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "orario non disponibile";
+  return date.toLocaleString("it-IT", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function calcolaMedieContesto(matches, tipo) {
   const filtrate = (matches || []).filter(
     (match) => match.casa_trasferta === tipo
@@ -153,7 +166,7 @@ function Home() {
     setErrore("");
   }
 
-  async function analizzaPartita(casa, ospite) {
+  async function analizzaPartita(casa, ospite, refresh = false) {
     setErrore("");
     setRisultato(null);
 
@@ -170,6 +183,7 @@ function Home() {
         ospite: ospite.trim(),
         competizione,
       });
+      if (refresh) params.set("refresh", "true");
 
       const response = await fetch(`/api/analyze?${params.toString()}`);
       const rawBody = await response.text();
@@ -267,6 +281,29 @@ function Home() {
             <div className="competition-chip">
               🏆 {risultato.competizione?.name || analisi.competizione}
             </div>
+
+            {risultato.cache_analisi?.salvata && (
+              <div className="model-warning">
+                <strong>
+                  {risultato.cache_analisi.hit
+                    ? "Analisi salvata: nessuna nuova richiesta alle fonti dati."
+                    : risultato.cache_analisi.aggiornamento_forzato
+                      ? "Analisi aggiornata e salvata."
+                      : "Nuova analisi calcolata e salvata."}
+                </strong>
+                <span>
+                  Salvata il {formatSavedAt(risultato.cache_analisi.saved_at)}. Le prossime aperture della stessa partita useranno questa copia senza consumare nuove richieste esterne.
+                </span>
+                <button
+                  type="button"
+                  className="analyze-button"
+                  disabled={caricamento}
+                  onClick={() => analizzaPartita(analisi.casa, analisi.ospite, true)}
+                >
+                  {caricamento ? "Aggiornamento..." : "Aggiorna analisi"}
+                </button>
+              </div>
+            )}
 
             {risultato.modello?.validato === false && (
               <div className="model-warning">
