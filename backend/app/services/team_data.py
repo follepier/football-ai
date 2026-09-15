@@ -42,9 +42,9 @@ def _media_opzionale(partite, campo):
         valori.append(numero)
 
     if not valori:
-        # Manteniamo compatibilita' con il motore, ma esponiamo separatamente
-        # il numero di campioni: il chiamante puo' distinguere 0 reale da dato
-        # indisponibile e non mostrarlo come statistica osservata.
+        # Lo zero serve solo come valore tecnico compatibile con il motore.
+        # Il numero di campioni permette al chiamante di non mostrarlo come
+        # osservazione reale quando il dato e' assente.
         return 0, 0
 
     return round(sum(valori) / len(valori), 2), len(valori)
@@ -62,6 +62,8 @@ def calcola_medie_partite(partite):
             "tiri_fuori": 0,
             "attacchi": 0,
             "attacchi_pericolosi": 0,
+            "corner_campioni": 0,
+            "ammonizioni_campioni": 0,
             "possesso_campioni": 0,
             "tiri_in_porta_campioni": 0,
             "tiri_fuori_campioni": 0,
@@ -71,6 +73,11 @@ def calcola_medie_partite(partite):
 
     numero_partite = len(partite)
 
+    corner, corner_campioni = _media_opzionale(partite, "corner")
+    ammonizioni, ammonizioni_campioni = _media_opzionale(
+        partite,
+        "ammonizioni",
+    )
     possesso, possesso_campioni = _media_opzionale(partite, "possesso")
     tiri_in_porta, tiri_in_porta_campioni = _media_opzionale(
         partite,
@@ -93,17 +100,15 @@ def calcola_medie_partite(partite):
         "gol_subiti": round(
             sum(p["gol_subiti"] for p in partite) / numero_partite, 2
         ),
-        "corner": round(
-            sum(p["corner"] for p in partite) / numero_partite, 2
-        ),
-        "ammonizioni": round(
-            sum(p["ammonizioni"] for p in partite) / numero_partite, 2
-        ),
+        "corner": corner,
+        "ammonizioni": ammonizioni,
         "possesso": possesso,
         "tiri_in_porta": tiri_in_porta,
         "tiri_fuori": tiri_fuori,
         "attacchi": attacchi,
         "attacchi_pericolosi": attacchi_pericolosi,
+        "corner_campioni": corner_campioni,
+        "ammonizioni_campioni": ammonizioni_campioni,
         "possesso_campioni": possesso_campioni,
         "tiri_in_porta_campioni": tiri_in_porta_campioni,
         "tiri_fuori_campioni": tiri_fuori_campioni,
