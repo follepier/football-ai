@@ -61,6 +61,10 @@ jobs:
             echo "Advanced metrics verifier not present; skipping."
           fi
 
+      - name: Verify provider rate-limit resilience
+        working-directory: backend
+        run: python verify_provider_resilience.py
+
       - name: Import FastAPI app
         working-directory: backend
         run: python -c "from app.main import app; assert app.version == '0.7.0'; print('PASS FastAPI app import')"
