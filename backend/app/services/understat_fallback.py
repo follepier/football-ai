@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from app.services.analysis_cache import record_understat_snapshot
 from app.services.competitions import DEFAULT_COMPETITION, get_competition_config
 from app.services.football_api import get_understat_league_data, stessa_squadra
 
@@ -112,6 +113,7 @@ def get_understat_recent_form(
 ):
     config = get_competition_config(competizione)
     league_data = get_understat_league_data(config["slug"])
+    record_understat_snapshot(config["slug"], league_data)
     return build_understat_recent_form_from_league_data(
         league_data,
         team_name,
@@ -169,6 +171,7 @@ def get_understat_upcoming_fixtures(
 ):
     config = get_competition_config(competizione)
     league_data = get_understat_league_data(config["slug"])
+    record_understat_snapshot(config["slug"], league_data)
     return build_understat_upcoming_from_league_data(
         league_data,
         config["name"],
