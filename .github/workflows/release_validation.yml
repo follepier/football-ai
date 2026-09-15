@@ -11,11 +11,13 @@ on:
     paths:
       - 'backend/**'
       - 'frontend/**'
+      - 'render.yaml'
       - '.github/workflows/release_validation.yml'
   pull_request:
     paths:
       - 'backend/**'
       - 'frontend/**'
+      - 'render.yaml'
       - '.github/workflows/release_validation.yml'
 
 jobs:
@@ -77,6 +79,10 @@ jobs:
         working-directory: backend
         run: python -c "from app.main import app; assert app.version == '0.7.0'; print('PASS FastAPI app import')"
 
+      - name: Import production FastAPI entrypoint
+        working-directory: backend
+        run: python -c "from app.deploy import app; assert app.version == '0.7.0'; print('PASS production entrypoint import')"
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -88,6 +94,10 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Check Cloudflare Pages API proxy
+        working-directory: frontend
+        run: node --check 'functions/api/[[path]].js'
+
       - name: Build frontend
         working-directory: frontend
-        run: npx vite build
+        run: npm run build
