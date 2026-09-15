@@ -3,6 +3,11 @@ from fastapi import FastAPI, HTTPException
 
 from app.services.advanced_stats import get_matchup_advanced_metrics_safe
 from app.services.analysis import calcola_analisi
+from app.services.analysis_cache import (
+    build_analysis_cache_key,
+    load_cached_analysis,
+    save_cached_analysis,
+)
 from app.services.competitions import (
     DEFAULT_COMPETITION,
     get_competition_config,
@@ -143,6 +148,7 @@ def analyze(
     casa: str = "",
     ospite: str = "",
     competizione: str = DEFAULT_COMPETITION,
+    refresh: bool = False,
 ):
     casa = casa.strip()
     ospite = ospite.strip()
@@ -166,6 +172,25 @@ def analyze(
             status_code=400,
             detail="Le due squadre devono essere diverse.",
         )
+
+    cache_key = build_analysis_cache_key(
+        config["slug"],
+        casa,
+        ospite,
+    )
+
+    if not refresh:
+        cached = load_cached_analysis(cache_key)
+        if cached is not None:
+            response = cached["response"]
+            response["cache_analisi"] = {
+                "salvata": True,
+                "hit": True,
+                "saved_at": cached.get("saved_at"),
+                "aggiornamento_forzato": False,
+                "richieste_fonti_evitabili": True,
+            }
+            return response
 
     provider_fallback_used = False
 
@@ -350,7 +375,7 @@ def analyze(
             "shot_extras"
         ] = "derived_recent_published"
 
-    return {
+    response = {
         "status": "success",
         "partita": f"{casa} vs {ospite}",
         "competizione": {
@@ -382,3 +407,13 @@ def analyze(
             "ospite": ultime_partite_ospite,
         },
     }
+
+    saved_at = save_cached_analysis(cache_key, response)
+    response["cache_analisi"] = {
+        "salvata": saved_at is not None,
+        "hit": False,
+        "saved_at": saved_at,
+        "aggiornamento_forzato": bool(refresh),
+        "richieste_fonti_evitabili": False,
+    }
+    return response
