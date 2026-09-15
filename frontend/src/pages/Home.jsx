@@ -79,10 +79,10 @@ function MatchList({ matches, team }) {
             <b>{match.risultato || "-"}</b>
           </div>
           <div className="match-stats">
-            <span>⚽ {match.gol_fatti ?? 0} fatti</span>
-            <span>🛡️ {match.gol_subiti ?? 0} subiti</span>
-            <span>🚩 {match.corner ?? 0} corner</span>
-            <span>🟨 {match.ammonizioni ?? 0} ammonizioni</span>
+            <span>⚽ {formatMetric(match.gol_fatti)} fatti</span>
+            <span>🛡️ {formatMetric(match.gol_subiti)} subiti</span>
+            <span>🚩 {formatMetric(match.corner)} corner</span>
+            <span>🟨 {formatMetric(match.ammonizioni)} ammonizioni</span>
           </div>
           <div className="match-stats">
             <span>📊 {formatMetric(match.possesso, "%")} possesso</span>
@@ -277,6 +277,15 @@ function Home() {
               </div>
             )}
 
+            {risultato.fonti_dati?.provider_fallback_attivo && (
+              <div className="model-warning">
+                <strong>Fonte gratuita principale temporaneamente limitata.</strong>
+                <span>
+                  L'analisi xG e le metriche Understat restano operative. I campi disponibili solo dal provider principale vengono mostrati come n/d, non come zero.
+                </span>
+              </div>
+            )}
+
             <div className="match-title">
               <div>🏠 {analisi.casa}</div>
               <span>VS</span>
@@ -292,10 +301,10 @@ function Home() {
                 <div className="stat-card highlight"><span>⚽ Gol attesi casa</span><strong>{analisi.gol_attesi_casa}</strong></div>
                 <div className="stat-card highlight"><span>⚽ Gol attesi ospite</span><strong>{analisi.gol_attesi_ospite}</strong></div>
                 <div className="stat-card main-highlight"><span>🎯 Gol attesi totali</span><strong>{analisi.gol_attesi_totali}</strong></div>
-                <div className="stat-card"><span>🚩 Corner casa</span><strong>{analisi.corner_casa}</strong></div>
-                <div className="stat-card"><span>🚩 Corner ospite</span><strong>{analisi.corner_ospite}</strong></div>
-                <div className="stat-card"><span>🟨 Ammonizioni casa</span><strong>{analisi.ammonizioni_casa}</strong></div>
-                <div className="stat-card"><span>🟨 Ammonizioni ospite</span><strong>{analisi.ammonizioni_ospite}</strong></div>
+                <div className="stat-card"><span>🚩 Corner casa</span><strong>{formatMetric(analisi.corner_casa)}</strong></div>
+                <div className="stat-card"><span>🚩 Corner ospite</span><strong>{formatMetric(analisi.corner_ospite)}</strong></div>
+                <div className="stat-card"><span>🟨 Ammonizioni casa</span><strong>{formatMetric(analisi.ammonizioni_casa)}</strong></div>
+                <div className="stat-card"><span>🟨 Ammonizioni ospite</span><strong>{formatMetric(analisi.ammonizioni_ospite)}</strong></div>
               </div>
             </section>
 
@@ -372,7 +381,7 @@ function Home() {
             </section>
 
             <section className="section">
-              <div className="section-title"><span>🔥</span><div><h3>Forma recente</h3><p>Ultime partite disponibili con statistiche avanzate</p></div></div>
+              <div className="section-title"><span>🔥</span><div><h3>Forma recente</h3><p>Ultime partite disponibili; i campi mancanti restano n/d</p></div></div>
               <div className="recent-grid">
                 <div className="recent-team"><h4>🏠 {analisi.casa}</h4><MatchList matches={risultato.ultime_partite?.casa} team={analisi.casa} /></div>
                 <div className="recent-team"><h4>✈️ {analisi.ospite}</h4><MatchList matches={risultato.ultime_partite?.ospite} team={analisi.ospite} /></div>
