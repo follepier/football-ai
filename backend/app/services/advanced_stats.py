@@ -1,4 +1,6 @@
 import math
+import time
+from threading import Lock
 
 import requests
 
@@ -6,6 +8,17 @@ from app.services.football_api import (
     get_understat_league_data,
     stessa_squadra,
 )
+
+
+UNDERSTAT_MATCH_URL = "https://understat.com/getMatchData/{match_id}"
+UNDERSTAT_HEADERS = {
+    "User-Agent": "Mozilla/5.0",
+    "X-Requested-With": "XMLHttpRequest",
+    "Referer": "https://understat.com/",
+}
+MATCH_SHOTS_CACHE_TTL_SECONDS = 3600
+_MATCH_SHOTS_CACHE = {}
+_MATCH_SHOTS_CACHE_LOCK = Lock()
 
 
 def _to_float(value, default=0.0):
@@ -58,6 +71,133 @@ def _players_for_team(league_data, team_name):
         if player.get("team_title")
         and stessa_squadra(player.get("team_title"), team_name)
     ]
+
+
+def is_inside_penalty_area(shot):
+    """Return True when an Understat shot is inside the penalty area.
+
+    Understat uses normalized pitch coordinates: X grows toward the goal and
+    Y spans the pitch width. The thresholds below approximate the standard
+    penalty-area rectangle on that normalized pitch.
+    """
+    try:
+        x = float(shot.get("X"))
+        y = float(shot.get("Y"))
+    except (TypeError, ValueError):
+        return False
+
+    return x >= 0.833 and 0.211 <= y <= 0.789
+
+
+def saved_shots_inside_box(shots):
+    return sum(
+        1
+        for shot in shots
+        if shot.get("result") == "SavedShot"
+        and is_inside_penalty_area(shot)
+    )
+
+
+def _get_match_shots(match_id):
+    cache_key = str(match_id)
+    now = time.monotonic()
+
+    with _MATCH_SHOTS_CACHE_LOCK:
+        cached = _MATCH_SHOTS_CACHE.get(cache_key)
+        if cached is not None and now < cached["expires_at"]:
+            return cached["value"]
+
+    response = requests.get(
+        UNDERSTAT_MATCH_URL.format(match_id=match_id),
+        headers=UNDERSTAT_HEADERS,
+        timeout=15,
+    )
+    response.raise_for_status()
+
+    payload = response.json()
+    shots = payload.get("shots", {})
+    result = {
+        "home": shots.get("h", []),
+        "away": shots.get("a", []),
+    }
+
+    with _MATCH_SHOTS_CACHE_LOCK:
+        _MATCH_SHOTS_CACHE[cache_key] = {
+            "expires_at": time.monotonic() + MATCH_SHOTS_CACHE_TTL_SECONDS,
+            "value": result,
+        }
+
+    return result
+
+
+def _recent_finished_team_matches(league_data, team_name, limit=5):
+    matches = []
+
+    for row in league_data.get("dates", []):
+        if not row.get("isResult") or not row.get("id"):
+            continue
+
+        home = (row.get("h") or {}).get("title")
+        away = (row.get("a") or {}).get("title")
+
+        if not home or not away:
+            continue
+
+        if stessa_squadra(team_name, home) or stessa_squadra(team_name, away):
+            matches.append(row)
+
+    matches.sort(key=lambda row: row.get("datetime", ""), reverse=True)
+    return matches[: max(1, int(limit))]
+
+
+def calculate_recent_saves_inside_box(
+    league_data,
+    team_name,
+    limit=5,
+):
+    """Average goalkeeper saves on shots from inside the box.
+
+    The metric is intentionally recent rather than season-wide to avoid dozens
+    of Understat match-data requests per analysis. Match shot data is cached.
+    Failed optional Understat match requests are skipped instead of invalidating
+    the main Football AI analysis.
+    """
+    samples = []
+
+    for match in _recent_finished_team_matches(
+        league_data,
+        team_name,
+        limit=limit,
+    ):
+        home = (match.get("h") or {}).get("title")
+        away = (match.get("a") or {}).get("title")
+
+        try:
+            shots = _get_match_shots(match["id"])
+        except requests.RequestException:
+            continue
+
+        if home and stessa_squadra(team_name, home):
+            faced_shots = shots["away"]
+        elif away and stessa_squadra(team_name, away):
+            faced_shots = shots["home"]
+        else:
+            continue
+
+        samples.append(saved_shots_inside_box(faced_shots))
+
+    if not samples:
+        return {
+            "saves_inside_box_per_match": None,
+            "saves_inside_box_matches": 0,
+        }
+
+    return {
+        "saves_inside_box_per_match": _round_or_none(
+            sum(samples) / len(samples)
+        ),
+        "saves_inside_box_matches": len(samples),
+    }
 
 
 def calculate_team_advanced_metrics_from_league_data(
@@ -134,7 +274,18 @@ def calculate_team_advanced_metrics_from_league_data(
             else deep_allowed / per_match_denominator
         ),
         "field_tilt_proxy": _round_or_none(field_tilt_proxy),
-        "field_tilt_status": "proxy_in_audit",
+        "field_tilt_status": "proxy_published",
+    }
+
+
+def _with_recent_saves(league_data, team_name, metrics):
+    return {
+        **metrics,
+        **calculate_recent_saves_inside_box(
+            league_data,
+            team_name,
+            limit=5,
+        ),
     }
 
 
@@ -145,21 +296,32 @@ def get_matchup_advanced_metrics(
 ):
     league_data = get_understat_league_data(competition)
 
+    home_metrics = calculate_team_advanced_metrics_from_league_data(
+        league_data,
+        home_team,
+    )
+    away_metrics = calculate_team_advanced_metrics_from_league_data(
+        league_data,
+        away_team,
+    )
+
     return {
         "status": "success",
         "source": "Understat",
         "scope": "stagione_corrente",
-        "home": calculate_team_advanced_metrics_from_league_data(
+        "home": _with_recent_saves(
             league_data,
             home_team,
+            home_metrics,
         ),
-        "away": calculate_team_advanced_metrics_from_league_data(
+        "away": _with_recent_saves(
             league_data,
             away_team,
+            away_metrics,
         ),
         "experimental": {
             "field_tilt_proxy": True,
-            "saves_inside_box": "audit_in_corso",
+            "saves_inside_box": "derived_recent_published",
         },
     }
 
@@ -190,6 +352,6 @@ def get_matchup_advanced_metrics_safe(
             "away": None,
             "experimental": {
                 "field_tilt_proxy": True,
-                "saves_inside_box": "audit_in_corso",
+                "saves_inside_box": "derived_recent_published",
             },
         }
