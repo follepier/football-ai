@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import "./Home.css";
 import "./MultiLeague.css";
 import UpcomingFixtures from "./UpcomingFixtures";
+import AdvancedMetrics from "./AdvancedMetrics";
 
 const COMPETIZIONI_FALLBACK = [
   { slug: "serie-a", name: "Serie A", country: "Italia", model_validated: true },
@@ -25,6 +26,19 @@ function formatMetric(value, suffix = "") {
   return `${value}${suffix}`;
 }
 
+function formatSavedAt(value) {
+  if (!value) return "orario non disponibile";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "orario non disponibile";
+  return date.toLocaleString("it-IT", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function calcolaMedieContesto(matches, tipo) {
   const filtrate = (matches || []).filter(
     (match) => match.casa_trasferta === tipo
@@ -33,12 +47,19 @@ function calcolaMedieContesto(matches, tipo) {
   if (!filtrate.length) return null;
 
   const media = (campo) => {
-    const totale = filtrate.reduce(
-      (somma, match) => somma + (Number(match[campo]) || 0),
-      0
-    );
+    const valori = filtrate
+      .map((match) => match[campo])
+      .filter(
+        (value) => value !== null
+          && value !== undefined
+          && Number.isFinite(Number(value))
+      )
+      .map(Number);
 
-    return Math.round((totale / filtrate.length) * 100) / 100;
+    if (!valori.length) return null;
+
+    const totale = valori.reduce((somma, value) => somma + value, 0);
+    return Math.round((totale / valori.length) * 100) / 100;
   };
 
   return {
@@ -71,10 +92,10 @@ function MatchList({ matches, team }) {
             <b>{match.risultato || "-"}</b>
           </div>
           <div className="match-stats">
-            <span>⚽ {match.gol_fatti ?? 0} fatti</span>
-            <span>🛡️ {match.gol_subiti ?? 0} subiti</span>
-            <span>🚩 {match.corner ?? 0} corner</span>
-            <span>🟨 {match.ammonizioni ?? 0} ammonizioni</span>
+            <span>⚽ {formatMetric(match.gol_fatti)} fatti</span>
+            <span>🛡️ {formatMetric(match.gol_subiti)} subiti</span>
+            <span>🚩 {formatMetric(match.corner)} corner</span>
+            <span>🟨 {formatMetric(match.ammonizioni)} ammonizioni</span>
           </div>
           <div className="match-stats">
             <span>📊 {formatMetric(match.possesso, "%")} possesso</span>
@@ -104,7 +125,11 @@ function ContextStats({ title, stats }) {
           <div className="stat-card highlight"><span>🔥 Attacchi pericolosi</span><strong>{formatMetric(stats.attacchi_pericolosi)}</strong></div>
         </div>
       )}
-      {stats && <p className="no-data">Media calcolata su {stats.partite} partite nel contesto.</p>}
+      {stats && (
+        <p className="no-data">
+          Partite recenti nel contesto: {stats.partite}. I dati non disponibili sono esclusi dalle medie.
+        </p>
+      )}
     </div>
   );
 }
@@ -141,7 +166,7 @@ function Home() {
     setErrore("");
   }
 
-  async function analizzaPartita(casa, ospite) {
+  async function analizzaPartita(casa, ospite, refresh = false) {
     setErrore("");
     setRisultato(null);
 
@@ -158,9 +183,23 @@ function Home() {
         ospite: ospite.trim(),
         competizione,
       });
+      if (refresh) params.set("refresh", "true");
 
       const response = await fetch(`/api/analyze?${params.toString()}`);
-      const data = await response.json();
+      const rawBody = await response.text();
+      let data = {};
+
+      if (rawBody) {
+        try {
+          data = JSON.parse(rawBody);
+        } catch {
+          throw new Error(
+            response.ok
+              ? "Il server ha restituito una risposta non valida."
+              : `Errore del server (${response.status}). Riprova tra poco.`
+          );
+        }
+      }
 
       if (!response.ok || data.status !== "success") {
         throw new Error(data.detail || "Impossibile completare l'analisi.");
@@ -243,11 +282,43 @@ function Home() {
               🏆 {risultato.competizione?.name || analisi.competizione}
             </div>
 
+            {risultato.cache_analisi?.salvata && (
+              <div className="model-warning">
+                <strong>
+                  {risultato.cache_analisi.hit
+                    ? "Analisi salvata: nessuna nuova richiesta alle fonti dati."
+                    : risultato.cache_analisi.aggiornamento_forzato
+                      ? "Analisi aggiornata e salvata."
+                      : "Nuova analisi calcolata e salvata."}
+                </strong>
+                <span>
+                  Salvata il {formatSavedAt(risultato.cache_analisi.saved_at)}. Le prossime aperture della stessa partita useranno questa copia senza consumare nuove richieste esterne.
+                </span>
+                <button
+                  type="button"
+                  className="analyze-button"
+                  disabled={caricamento}
+                  onClick={() => analizzaPartita(analisi.casa, analisi.ospite, true)}
+                >
+                  {caricamento ? "Aggiornamento..." : "Aggiorna analisi"}
+                </button>
+              </div>
+            )}
+
             {risultato.modello?.validato === false && (
               <div className="model-warning">
                 <strong>Modello sperimentale per questo campionato.</strong>
                 <span>
                   I dati e l'engine xG sono attivi, ma la calibrazione probabilistica dedicata è ancora in validazione.
+                </span>
+              </div>
+            )}
+
+            {risultato.fonti_dati?.provider_fallback_attivo && (
+              <div className="model-warning">
+                <strong>Fonte gratuita principale temporaneamente limitata.</strong>
+                <span>
+                  L'analisi xG e le metriche Understat restano operative. I campi disponibili solo dal provider principale vengono mostrati come n/d, non come zero.
                 </span>
               </div>
             )}
@@ -267,10 +338,10 @@ function Home() {
                 <div className="stat-card highlight"><span>⚽ Gol attesi casa</span><strong>{analisi.gol_attesi_casa}</strong></div>
                 <div className="stat-card highlight"><span>⚽ Gol attesi ospite</span><strong>{analisi.gol_attesi_ospite}</strong></div>
                 <div className="stat-card main-highlight"><span>🎯 Gol attesi totali</span><strong>{analisi.gol_attesi_totali}</strong></div>
-                <div className="stat-card"><span>🚩 Corner casa</span><strong>{analisi.corner_casa}</strong></div>
-                <div className="stat-card"><span>🚩 Corner ospite</span><strong>{analisi.corner_ospite}</strong></div>
-                <div className="stat-card"><span>🟨 Ammonizioni casa</span><strong>{analisi.ammonizioni_casa}</strong></div>
-                <div className="stat-card"><span>🟨 Ammonizioni ospite</span><strong>{analisi.ammonizioni_ospite}</strong></div>
+                <div className="stat-card"><span>🚩 Corner casa</span><strong>{formatMetric(analisi.corner_casa)}</strong></div>
+                <div className="stat-card"><span>🚩 Corner ospite</span><strong>{formatMetric(analisi.corner_ospite)}</strong></div>
+                <div className="stat-card"><span>🟨 Ammonizioni casa</span><strong>{formatMetric(analisi.ammonizioni_casa)}</strong></div>
+                <div className="stat-card"><span>🟨 Ammonizioni ospite</span><strong>{formatMetric(analisi.ammonizioni_ospite)}</strong></div>
               </div>
             </section>
 
@@ -284,6 +355,12 @@ function Home() {
                 <ContextStats title={`✈️ ${analisi.ospite} · in trasferta`} stats={medieOspite} />
               </div>
             </section>
+
+            <AdvancedMetrics
+              metrics={risultato.metriche_avanzate}
+              home={analisi.casa}
+              away={analisi.ospite}
+            />
 
             <section className="section">
               <div className="section-title"><span>🎯</span><div><h3>1X2</h3><p>Probabilità degli esiti principali</p></div></div>
@@ -323,9 +400,9 @@ function Home() {
             <section className="section">
               <div className="section-title"><span>🎯</span><div><h3>Volume tiri</h3><p>Indicatore pre-partita disponibile nel modello</p></div></div>
               <div className="stats-grid">
-                <div className="stat-card"><span>🏠 Volume casa</span><strong>{volume.casa ?? 0}</strong></div>
-                <div className="stat-card"><span>✈️ Volume ospite</span><strong>{volume.ospite ?? 0}</strong></div>
-                <div className="stat-card highlight"><span>↔️ Differenziale</span><strong>{volume.differenziale ?? 0}</strong></div>
+                <div className="stat-card"><span>🏠 Volume casa</span><strong>{formatMetric(volume.casa)}</strong></div>
+                <div className="stat-card"><span>✈️ Volume ospite</span><strong>{formatMetric(volume.ospite)}</strong></div>
+                <div className="stat-card highlight"><span>↔️ Differenziale</span><strong>{formatMetric(volume.differenziale)}</strong></div>
               </div>
             </section>
 
@@ -341,7 +418,7 @@ function Home() {
             </section>
 
             <section className="section">
-              <div className="section-title"><span>🔥</span><div><h3>Forma recente</h3><p>Ultime partite disponibili con statistiche avanzate</p></div></div>
+              <div className="section-title"><span>🔥</span><div><h3>Forma recente</h3><p>Ultime partite disponibili; i campi mancanti restano n/d</p></div></div>
               <div className="recent-grid">
                 <div className="recent-team"><h4>🏠 {analisi.casa}</h4><MatchList matches={risultato.ultime_partite?.casa} team={analisi.casa} /></div>
                 <div className="recent-team"><h4>✈️ {analisi.ospite}</h4><MatchList matches={risultato.ultime_partite?.ospite} team={analisi.ospite} /></div>

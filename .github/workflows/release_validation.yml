@@ -7,6 +7,7 @@ on:
       - main
       - feature/multi-league-engine
       - feature/upcoming-fixtures-ui
+      - feature/site-polish
     paths:
       - 'backend/**'
       - 'frontend/**'
@@ -50,6 +51,27 @@ jobs:
           else
             echo "Upcoming fixtures verifier not present; skipping."
           fi
+
+      - name: Verify advanced metrics logic
+        working-directory: backend
+        run: |
+          if [ -f verify_advanced_metrics_logic.py ]; then
+            python verify_advanced_metrics_logic.py
+          else
+            echo "Advanced metrics verifier not present; skipping."
+          fi
+
+      - name: Verify provider rate-limit resilience
+        working-directory: backend
+        run: python verify_provider_resilience.py
+
+      - name: Verify Understat fallback logic
+        working-directory: backend
+        run: python verify_understat_fallback_logic.py
+
+      - name: Verify persistent analysis cache
+        working-directory: backend
+        run: python verify_analysis_cache.py
 
       - name: Import FastAPI app
         working-directory: backend

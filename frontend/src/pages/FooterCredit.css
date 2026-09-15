@@ -1,0 +1,9 @@
+footer::after {
+  content: "creato da un folle";
+  display: block;
+  margin-top: 6px;
+  color: var(--muted, #94a3b8);
+  font-size: 12px;
+  font-style: italic;
+  letter-spacing: 0.02em;
+}
