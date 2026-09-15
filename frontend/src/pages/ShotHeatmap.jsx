@@ -34,11 +34,17 @@ function ShotHeatmap({ data }) {
         <rect className="shot-pitch-bg" x="0" y="0" width="100" height="64" rx="1.5" />
 
         {data.cells.map((cell) => {
-          const opacity = Math.max(0.04, Math.min(0.88, 0.06 + (cell.intensity || 0) * 0.82));
+          const hasShots = (cell.shots || 0) > 0;
+          const rawIntensity = Math.max(0, Math.min(1, cell.intensity || 0));
+          const visualIntensity = Math.sqrt(rawIntensity);
+          const opacity = hasShots
+            ? Math.max(0.2, Math.min(0.9, 0.2 + visualIntensity * 0.7))
+            : 0;
+
           return (
             <rect
               key={`${cell.row}-${cell.column}`}
-              className="shot-heat-cell"
+              className={hasShots ? "shot-heat-cell shot-heat-cell-active" : "shot-heat-cell"}
               x={cell.column * cellWidth}
               y={cell.row * cellHeight}
               width={cellWidth}
@@ -70,7 +76,7 @@ function ShotHeatmap({ data }) {
         <span>porta avversaria →</span>
       </div>
       <p className="no-data shot-heatmap-note">
-        Intensità delle celle basata sull'xG cumulato dei tiri. È una mappa dei tiri, non una heat map completa dei tocchi della squadra.
+        Intensità basata sull'xG cumulato, con scala visiva non lineare per rendere leggibili anche le zone con pochi tiri o basso xG. Le celle senza tiri restano vuote. È una mappa dei tiri, non una heat map completa dei tocchi della squadra.
       </p>
     </div>
   );
