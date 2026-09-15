@@ -166,7 +166,7 @@ function Home() {
     setErrore("");
   }
 
-  async function analizzaPartita(casa, ospite, refresh = false) {
+  async function analizzaPartita(casa, ospite, fixture = null) {
     setErrore("");
     setRisultato(null);
 
@@ -183,7 +183,13 @@ function Home() {
         ospite: ospite.trim(),
         competizione,
       });
-      if (refresh) params.set("refresh", "true");
+
+      if (fixture?.kickoff_ts !== null && fixture?.kickoff_ts !== undefined) {
+        params.set("kickoff_ts", String(fixture.kickoff_ts));
+      }
+      if (fixture?.id !== null && fixture?.id !== undefined) {
+        params.set("fixture_id", String(fixture.id));
+      }
 
       const response = await fetch(`/api/analyze?${params.toString()}`);
       const rawBody = await response.text();
@@ -285,23 +291,17 @@ function Home() {
             {risultato.cache_analisi?.salvata && (
               <div className="model-warning">
                 <strong>
-                  {risultato.cache_analisi.hit
-                    ? "Analisi salvata: nessuna nuova richiesta alle fonti dati."
-                    : risultato.cache_analisi.aggiornamento_forzato
-                      ? "Analisi aggiornata e salvata."
-                      : "Nuova analisi calcolata e salvata."}
+                  {risultato.cache_analisi.congelata
+                    ? "Analisi pre-partita congelata: non viene più sovrascritta."
+                    : risultato.cache_analisi.hit
+                      ? "Analisi salvata: nessuna nuova richiesta alle fonti dati."
+                      : risultato.cache_analisi.aggiornamento_automatico
+                        ? "Analisi aggiornata automaticamente dopo nuovi dati."
+                        : "Nuova analisi calcolata e salvata."}
                 </strong>
                 <span>
-                  Salvata il {formatSavedAt(risultato.cache_analisi.saved_at)}. Le prossime aperture della stessa partita useranno questa copia senza consumare nuove richieste esterne.
+                  Salvata il {formatSavedAt(risultato.cache_analisi.saved_at)}. Prima del calcio d'inizio Football AI riutilizza questa copia e la ricalcola automaticamente solo quando vengono acquisiti nuovi risultati conclusi di una delle due squadre. Dopo il kickoff la previsione resta congelata per preservare il dato pre-partita.
                 </span>
-                <button
-                  type="button"
-                  className="analyze-button"
-                  disabled={caricamento}
-                  onClick={() => analizzaPartita(analisi.casa, analisi.ospite, true)}
-                >
-                  {caricamento ? "Aggiornamento..." : "Aggiorna analisi"}
-                </button>
               </div>
             )}
 
