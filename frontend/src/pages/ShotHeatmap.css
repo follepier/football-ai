@@ -41,6 +41,11 @@
   fill: var(--accent, #22d3ee);
 }
 
+.shot-heat-cell-active {
+  stroke: rgba(34, 211, 238, 0.22);
+  stroke-width: 0.18;
+}
+
 .shot-pitch-lines {
   fill: none;
   stroke: rgba(248, 250, 252, 0.72);
