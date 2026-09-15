@@ -1,4 +1,5 @@
 from app.services.advanced_stats import (
+    build_shot_heatmap,
     calculate_team_advanced_metrics_from_league_data,
     is_inside_penalty_area,
     saved_shots_inside_box,
@@ -58,16 +59,25 @@ def main():
     assert metrics["field_tilt_status"] == "proxy_published"
 
     shots = [
-        {"X": "0.90", "Y": "0.50", "result": "SavedShot"},
-        {"X": "0.84", "Y": "0.25", "result": "SavedShot"},
-        {"X": "0.70", "Y": "0.50", "result": "SavedShot"},
-        {"X": "0.90", "Y": "0.10", "result": "SavedShot"},
-        {"X": "0.90", "Y": "0.50", "result": "Goal"},
+        {"X": "0.90", "Y": "0.50", "result": "SavedShot", "xG": "0.40"},
+        {"X": "0.84", "Y": "0.25", "result": "SavedShot", "xG": "0.20"},
+        {"X": "0.70", "Y": "0.50", "result": "SavedShot", "xG": "0.10"},
+        {"X": "0.90", "Y": "0.10", "result": "SavedShot", "xG": "0.05"},
+        {"X": "0.90", "Y": "0.50", "result": "Goal", "xG": "0.30"},
     ]
 
     assert is_inside_penalty_area(shots[0]) is True
     assert is_inside_penalty_area(shots[2]) is False
     assert saved_shots_inside_box(shots) == 2
+
+    heatmap = build_shot_heatmap(shots, columns=4, rows=2)
+    assert heatmap["columns"] == 4
+    assert heatmap["rows"] == 2
+    assert heatmap["shots"] == 5
+    assert heatmap["xg_total"] == 1.05
+    assert heatmap["xg_per_shot"] == 0.21
+    assert len(heatmap["cells"]) == 8
+    assert max(cell["intensity"] for cell in heatmap["cells"]) == 1.0
 
     print("PASS advanced metrics deterministic logic")
 
