@@ -59,11 +59,41 @@ def main():
     assert metrics["field_tilt_status"] == "proxy_published"
 
     shots = [
-        {"X": "0.90", "Y": "0.50", "result": "SavedShot", "xG": "0.40"},
-        {"X": "0.84", "Y": "0.25", "result": "SavedShot", "xG": "0.20"},
-        {"X": "0.70", "Y": "0.50", "result": "SavedShot", "xG": "0.10"},
-        {"X": "0.90", "Y": "0.10", "result": "SavedShot", "xG": "0.05"},
-        {"X": "0.90", "Y": "0.50", "result": "Goal", "xG": "0.30"},
+        {
+            "X": "0.90",
+            "Y": "0.50",
+            "result": "SavedShot",
+            "xG": "0.40",
+            "situation": "OpenPlay",
+        },
+        {
+            "X": "0.84",
+            "Y": "0.25",
+            "result": "SavedShot",
+            "xG": "0.20",
+            "situation": "FromCorner",
+        },
+        {
+            "X": "0.70",
+            "Y": "0.50",
+            "result": "SavedShot",
+            "xG": "0.10",
+            "situation": "OpenPlay",
+        },
+        {
+            "X": "0.90",
+            "Y": "0.10",
+            "result": "SavedShot",
+            "xG": "0.05",
+            "situation": "SetPiece",
+        },
+        {
+            "X": "0.90",
+            "Y": "0.50",
+            "result": "Goal",
+            "xG": "0.30",
+            "situation": "OpenPlay",
+        },
     ]
 
     assert is_inside_penalty_area(shots[0]) is True
@@ -78,6 +108,22 @@ def main():
     assert heatmap["xg_per_shot"] == 0.21
     assert len(heatmap["cells"]) == 8
     assert max(cell["intensity"] for cell in heatmap["cells"]) == 1.0
+
+    profile = heatmap["profile"]
+    assert profile["shots_inside_box"] == 3
+    assert profile["shots_inside_box_share_pct"] == 60.0
+    assert profile["xg_inside_box"] == 0.9
+    assert profile["shots_outside_box"] == 2
+    assert profile["shots_outside_box_share_pct"] == 40.0
+    assert profile["xg_outside_box"] == 0.15
+    assert profile["lateral_distribution"]["left"]["shots"] == 2
+    assert profile["lateral_distribution"]["left"]["share_pct"] == 40.0
+    assert profile["lateral_distribution"]["center"]["shots"] == 3
+    assert profile["lateral_distribution"]["center"]["share_pct"] == 60.0
+    assert profile["lateral_distribution"]["right"]["shots"] == 0
+    assert profile["situations"][0]["situation"] == "OpenPlay"
+    assert profile["situations"][0]["shots"] == 3
+    assert profile["situations"][0]["share_pct"] == 60.0
 
     print("PASS advanced metrics deterministic logic")
 
