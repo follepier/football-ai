@@ -72,7 +72,7 @@ export default function UpcomingFixtures({
     setSelezionata(key);
 
     try {
-      await onAnalyze(partita.home, partita.away);
+      await onAnalyze(partita.home, partita.away, partita);
     } finally {
       setSelezionata(null);
     }
