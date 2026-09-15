@@ -1,3 +1,4 @@
+import requests
 from fastapi import FastAPI, HTTPException
 
 from app.services.advanced_stats import get_matchup_advanced_metrics_safe
@@ -25,6 +26,30 @@ app = FastAPI(
     version="0.7.0",
     description="Motore di analisi statistica e probabilistica delle partite di calcio.",
 )
+
+
+def _provider_http_exception(exc):
+    response = getattr(exc, "response", None)
+    status_code = getattr(response, "status_code", None)
+
+    if status_code == 429:
+        return HTTPException(
+            status_code=503,
+            detail=(
+                "La fonte dati gratuita ha raggiunto temporaneamente il limite "
+                "di richieste. Football AI usera i dati gia in cache quando "
+                "disponibili; se questa partita non e ancora in cache, riprova "
+                "tra poco."
+            ),
+        )
+
+    return HTTPException(
+        status_code=502,
+        detail=(
+            "La fonte dati principale e temporaneamente non disponibile. "
+            "Riprova tra poco."
+        ),
+    )
 
 
 @app.get("/")
@@ -61,13 +86,18 @@ def competition_teams(competizione: str):
             detail=str(exc),
         ) from exc
 
+    try:
+        squadre = get_competition_teams(config["slug"])
+    except requests.RequestException as exc:
+        raise _provider_http_exception(exc) from exc
+
     return {
         "status": "success",
         "competizione": {
             "slug": config["slug"],
             "name": config["name"],
         },
-        "squadre": get_competition_teams(config["slug"]),
+        "squadre": squadre,
     }
 
 
@@ -90,6 +120,11 @@ def competition_upcoming_fixtures(
             detail="Il limite deve essere compreso tra 1 e 50.",
         )
 
+    try:
+        partite = get_upcoming_fixtures(config["slug"], limit=limit)
+    except requests.RequestException as exc:
+        raise _provider_http_exception(exc) from exc
+
     return {
         "status": "success",
         "competizione": {
@@ -97,7 +132,7 @@ def competition_upcoming_fixtures(
             "name": config["name"],
             "country": config["country"],
         },
-        "partite": get_upcoming_fixtures(config["slug"], limit=limit),
+        "partite": partite,
     }
 
 
@@ -130,14 +165,17 @@ def analyze(
             detail="Le due squadre devono essere diverse.",
         )
 
-    partite_casa = get_team_last_matches(
-        casa,
-        config["slug"],
-    )
-    partite_ospite = get_team_last_matches(
-        ospite,
-        config["slug"],
-    )
+    try:
+        partite_casa = get_team_last_matches(
+            casa,
+            config["slug"],
+        )
+        partite_ospite = get_team_last_matches(
+            ospite,
+            config["slug"],
+        )
+    except requests.RequestException as exc:
+        raise _provider_http_exception(exc) from exc
 
     ultime_partite_casa = trasforma_partite_squadra(
         partite_casa,
@@ -208,6 +246,47 @@ def analyze(
         dati_ospite,
         config["slug"],
     )
+
+    # Se il provider ha limitato le statistiche opzionali, l'engine xG resta
+    # valido. Non mostriamo pero falsi zeri nel volume tiri.
+    volume = risultato.get("volume_tiri", {})
+    campioni_volume_casa = min(
+        medie_casa.get("tiri_in_porta_campioni", 0),
+        medie_casa.get("tiri_fuori_campioni", 0),
+    )
+    campioni_volume_ospite = min(
+        medie_ospite.get("tiri_in_porta_campioni", 0),
+        medie_ospite.get("tiri_fuori_campioni", 0),
+    )
+
+    if campioni_volume_casa <= 0:
+        volume["casa"] = None
+    if campioni_volume_ospite <= 0:
+        volume["ospite"] = None
+    if volume.get("casa") is None or volume.get("ospite") is None:
+        volume["differenziale"] = None
+
+    risultato["volume_tiri"] = volume
+    risultato["disponibilita_dati_gioco"] = {
+        "casa": {
+            "possesso": medie_casa.get("possesso_campioni", 0),
+            "tiri": campioni_volume_casa,
+            "attacchi": medie_casa.get("attacchi_campioni", 0),
+            "attacchi_pericolosi": medie_casa.get(
+                "attacchi_pericolosi_campioni",
+                0,
+            ),
+        },
+        "ospite": {
+            "possesso": medie_ospite.get("possesso_campioni", 0),
+            "tiri": campioni_volume_ospite,
+            "attacchi": medie_ospite.get("attacchi_campioni", 0),
+            "attacchi_pericolosi": medie_ospite.get(
+                "attacchi_pericolosi_campioni",
+                0,
+            ),
+        },
+    }
 
     metriche_avanzate = get_matchup_advanced_metrics_safe(
         casa,
