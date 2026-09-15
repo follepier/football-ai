@@ -19,7 +19,7 @@ from app.services.team_data import (
 
 app = FastAPI(
     title="Football AI",
-    version="0.6.0",
+    version="0.7.0",
     description="Motore di analisi statistica e probabilistica delle partite di calcio.",
 )
 
@@ -29,7 +29,7 @@ def root():
     return {
         "app": "Football AI",
         "status": "online",
-        "version": "0.6.0",
+        "version": "0.7.0",
         "engine": "statistical-probabilistic",
         "multi_league": True,
     }
@@ -37,7 +37,7 @@ def root():
 
 @app.get("/health")
 def health():
-    return {"status": "healthy", "version": "0.6.0"}
+    return {"status": "healthy", "version": "0.7.0"}
 
 
 @app.get("/competitions")
