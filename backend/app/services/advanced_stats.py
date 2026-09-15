@@ -1,5 +1,6 @@
 import math
 import time
+from collections import defaultdict
 from threading import Lock
 
 import requests
@@ -37,6 +38,12 @@ def _round_or_none(value, digits=2):
     if value is None:
         return None
     return round(float(value), digits)
+
+
+def _percentage(part, total):
+    if total <= 0:
+        return None
+    return round(100 * part / total, 1)
 
 
 def _team_records(league_data):
@@ -113,6 +120,85 @@ def saved_shots_inside_box(shots):
     )
 
 
+def _lateral_zone(y):
+    """Split the pitch width into left, centre and right attacking lanes."""
+    if y < (1 / 3):
+        return "left"
+    if y < (2 / 3):
+        return "center"
+    return "right"
+
+
+def _shot_profile(shots):
+    valid_shots = []
+    for shot in shots or []:
+        coordinates = _shot_coordinates(shot)
+        if coordinates is None:
+            continue
+        valid_shots.append((shot, coordinates))
+
+    total = len(valid_shots)
+    total_xg = sum(max(0.0, _to_float(shot.get("xG"))) for shot, _ in valid_shots)
+
+    inside_count = 0
+    inside_xg = 0.0
+    lanes = {
+        "left": {"shots": 0, "xg": 0.0},
+        "center": {"shots": 0, "xg": 0.0},
+        "right": {"shots": 0, "xg": 0.0},
+    }
+    situations = defaultdict(lambda: {"shots": 0, "xg": 0.0})
+
+    for shot, (_, y) in valid_shots:
+        xg = max(0.0, _to_float(shot.get("xG")))
+
+        if is_inside_penalty_area(shot):
+            inside_count += 1
+            inside_xg += xg
+
+        lane = _lateral_zone(y)
+        lanes[lane]["shots"] += 1
+        lanes[lane]["xg"] += xg
+
+        situation = str(shot.get("situation") or "Unknown")
+        situations[situation]["shots"] += 1
+        situations[situation]["xg"] += xg
+
+    outside_count = total - inside_count
+    outside_xg = max(0.0, total_xg - inside_xg)
+
+    for lane in lanes.values():
+        lane["share_pct"] = _percentage(lane["shots"], total)
+        lane["xg"] = round(lane["xg"], 2)
+
+    situation_rows = []
+    for name, values in situations.items():
+        situation_rows.append(
+            {
+                "situation": name,
+                "shots": values["shots"],
+                "share_pct": _percentage(values["shots"], total),
+                "xg": round(values["xg"], 2),
+            }
+        )
+
+    situation_rows.sort(
+        key=lambda row: (row["shots"], row["xg"]),
+        reverse=True,
+    )
+
+    return {
+        "shots_inside_box": inside_count,
+        "shots_inside_box_share_pct": _percentage(inside_count, total),
+        "xg_inside_box": round(inside_xg, 2),
+        "shots_outside_box": outside_count,
+        "shots_outside_box_share_pct": _percentage(outside_count, total),
+        "xg_outside_box": round(outside_xg, 2),
+        "lateral_distribution": lanes,
+        "situations": situation_rows,
+    }
+
+
 def build_shot_heatmap(shots, columns=8, rows=6):
     """Build a compact xG-weighted shot heatmap from Understat coordinates."""
     columns = max(2, int(columns))
@@ -182,6 +268,7 @@ def build_shot_heatmap(shots, columns=8, rows=6):
             digits=3,
         ),
         "cells": cells,
+        "profile": _shot_profile(shots),
     }
 
 
@@ -321,6 +408,9 @@ def calculate_recent_shot_heatmap(
 
     heatmap = build_shot_heatmap(team_shots)
     heatmap["matches"] = matches_used
+    heatmap["shots_per_match"] = _round_or_none(
+        None if matches_used <= 0 else heatmap["shots"] / matches_used
+    )
     heatmap["source"] = "Understat"
     heatmap["scope"] = "ultime_partite"
     return heatmap
@@ -454,6 +544,7 @@ def get_matchup_advanced_metrics(
             "field_tilt_proxy": True,
             "saves_inside_box": "derived_recent_published",
             "shot_heatmap": "derived_recent_published",
+            "shot_profile": "derived_recent_published",
         },
     }
 
@@ -486,5 +577,6 @@ def get_matchup_advanced_metrics_safe(
                 "field_tilt_proxy": True,
                 "saves_inside_box": "derived_recent_published",
                 "shot_heatmap": "derived_recent_published",
+                "shot_profile": "derived_recent_published",
             },
         }
