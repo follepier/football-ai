@@ -10,7 +10,7 @@ from backtest_european_common_calibration import (
     build_walkforward_rows,
     fit_affine_poisson,
     metriche,
-    print_bootstrap,
+    print_bootstrap_compact as print_bootstrap,
     print_metriche,
 )
 
