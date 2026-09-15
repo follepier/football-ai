@@ -41,7 +41,7 @@ function TeamAdvancedMetrics({ title, data }) {
         Salvataggi in area: media sulle ultime {data.saves_inside_box_matches ?? 0} partite disponibili.
       </p>
 
-      <ShotHeatmap data={data.shot_heatmap} />
+      <ShotHeatmap data={data.shot_heatmap} extras={data.shot_extras} />
     </div>
   );
 }
@@ -74,6 +74,9 @@ export default function AdvancedMetrics({ metrics, home, away }) {
         </p>
         <p className="no-data">
           <strong>Mappa dei tiri</strong> · usa le coordinate reali dei tiri Understat delle ultime partite. L'intensità evidenzia le zone che hanno prodotto più xG complessivo; non va confusa con una heat map completa di tutti i tocchi della squadra.
+        </p>
+        <p className="no-data">
+          <strong>Qualità offensiva recente</strong> · npxG, Gol − xG, quota di xG da palla inattiva e distanza media di tiro descrivono come viene prodotta la pericolosità nelle ultime partite. Restano indicatori descrittivi e non entrano ancora nel modello predittivo.
         </p>
       </div>
 
