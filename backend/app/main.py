@@ -13,6 +13,7 @@ from app.services.football_api import (
     stessa_squadra,
     trasforma_partite_squadra,
 )
+from app.services.shot_extras import get_matchup_shot_extras_safe
 from app.services.team_data import (
     calcola_medie_casa_trasferta,
     crea_dati_squadra,
@@ -213,6 +214,28 @@ def analyze(
         ospite,
         config["slug"],
     )
+
+    shot_extras = get_matchup_shot_extras_safe(
+        casa,
+        ospite,
+        config["slug"],
+        limit=5,
+    )
+
+    if (
+        metriche_avanzate.get("status") == "success"
+        and shot_extras.get("status") == "success"
+    ):
+        for side in ("home", "away"):
+            if isinstance(metriche_avanzate.get(side), dict):
+                metriche_avanzate[side] = {
+                    **metriche_avanzate[side],
+                    "shot_extras": shot_extras.get(side),
+                }
+
+        metriche_avanzate.setdefault("experimental", {})[
+            "shot_extras"
+        ] = "derived_recent_published"
 
     return {
         "status": "success",
