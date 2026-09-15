@@ -16,6 +16,7 @@ from app.services.team_data import (
     calcola_medie_casa_trasferta,
     crea_dati_squadra,
 )
+from app.services.upcoming_fixtures import get_upcoming_fixtures
 
 app = FastAPI(
     title="Football AI",
@@ -65,6 +66,36 @@ def competition_teams(competizione: str):
             "name": config["name"],
         },
         "squadre": get_competition_teams(config["slug"]),
+    }
+
+
+@app.get("/competitions/{competizione}/fixtures/upcoming")
+def competition_upcoming_fixtures(
+    competizione: str,
+    limit: int = 20,
+):
+    try:
+        config = get_competition_config(competizione)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=str(exc),
+        ) from exc
+
+    if limit < 1 or limit > 50:
+        raise HTTPException(
+            status_code=400,
+            detail="Il limite deve essere compreso tra 1 e 50.",
+        )
+
+    return {
+        "status": "success",
+        "competizione": {
+            "slug": config["slug"],
+            "name": config["name"],
+            "country": config["country"],
+        },
+        "partite": get_upcoming_fixtures(config["slug"], limit=limit),
     }
 
 

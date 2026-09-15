@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from "react";
 import "./Home.css";
 import "./MultiLeague.css";
+import UpcomingFixtures from "./UpcomingFixtures";
 
 const COMPETIZIONI_FALLBACK = [
   { slug: "serie-a", name: "Serie A", country: "Italia", model_validated: true },
-  { slug: "premier-league", name: "Premier League", country: "Inghilterra", model_validated: false },
-  { slug: "la-liga", name: "La Liga", country: "Spagna", model_validated: false },
-  { slug: "bundesliga", name: "Bundesliga", country: "Germania", model_validated: false },
-  { slug: "ligue-1", name: "Ligue 1", country: "Francia", model_validated: false },
+  { slug: "premier-league", name: "Premier League", country: "Inghilterra", model_validated: true },
+  { slug: "la-liga", name: "La Liga", country: "Spagna", model_validated: true },
+  { slug: "bundesliga", name: "Bundesliga", country: "Germania", model_validated: true },
+  { slug: "ligue-1", name: "Ligue 1", country: "Francia", model_validated: true },
 ];
 
 function PercentCard({ label, value }) {
@@ -111,9 +112,6 @@ function ContextStats({ title, stats }) {
 function Home() {
   const [competizione, setCompetizione] = useState("serie-a");
   const [competizioni, setCompetizioni] = useState(COMPETIZIONI_FALLBACK);
-  const [squadreDisponibili, setSquadreDisponibili] = useState([]);
-  const [squadraCasa, setSquadraCasa] = useState("");
-  const [squadraOspite, setSquadraOspite] = useState("");
   const [risultato, setRisultato] = useState(null);
   const [errore, setErrore] = useState("");
   const [caricamento, setCaricamento] = useState(false);
@@ -137,41 +135,18 @@ function Home() {
     };
   }, []);
 
-  useEffect(() => {
-    let active = true;
-    setSquadreDisponibili([]);
-
-    fetch(`/api/competitions/${encodeURIComponent(competizione)}/teams`)
-      .then((response) => response.json())
-      .then((data) => {
-        if (active && Array.isArray(data.squadre)) {
-          setSquadreDisponibili(data.squadre);
-        }
-      })
-      .catch(() => {
-        // Il campo resta libero anche se il suggerimento squadre non e' disponibile.
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [competizione]);
-
   function cambiaCompetizione(event) {
     setCompetizione(event.target.value);
-    setSquadraCasa("");
-    setSquadraOspite("");
     setRisultato(null);
     setErrore("");
   }
 
-  async function analizzaPartita(event) {
-    event?.preventDefault();
+  async function analizzaPartita(casa, ospite) {
     setErrore("");
     setRisultato(null);
 
-    if (!squadraCasa.trim() || !squadraOspite.trim()) {
-      setErrore("Inserisci entrambe le squadre.");
+    if (!casa?.trim() || !ospite?.trim()) {
+      setErrore("Partita non valida.");
       return;
     }
 
@@ -179,8 +154,8 @@ function Home() {
 
     try {
       const params = new URLSearchParams({
-        casa: squadraCasa.trim(),
-        ospite: squadraOspite.trim(),
+        casa: casa.trim(),
+        ospite: ospite.trim(),
         competizione,
       });
 
@@ -232,11 +207,11 @@ function Home() {
           <div className="hero-badge">⚡ AI MATCH ANALYZER</div>
           <h2>Analizza una partita</h2>
           <p>
-            Seleziona il campionato e le due squadre per ottenere indicatori statistici e probabilità.
+            Seleziona il campionato e poi una delle prossime partite in programma.
             I risultati sono stime del modello, non certezze.
           </p>
 
-          <form className="teams-form" onSubmit={analizzaPartita}>
+          <div className="teams-form fixture-selection-form">
             <div className="team-input competition-input">
               <label>🏆 Campionato</label>
               <select
@@ -251,39 +226,13 @@ function Home() {
                 ))}
               </select>
             </div>
+          </div>
 
-            <div className="team-input">
-              <label>🏠 Squadra casa</label>
-              <input
-                aria-label="Squadra casa"
-                list="competition-teams"
-                autoComplete="off"
-                value={squadraCasa}
-                onChange={(e) => setSquadraCasa(e.target.value)}
-              />
-            </div>
-            <div className="vs">VS</div>
-            <div className="team-input">
-              <label>✈️ Squadra ospite</label>
-              <input
-                aria-label="Squadra ospite"
-                list="competition-teams"
-                autoComplete="off"
-                value={squadraOspite}
-                onChange={(e) => setSquadraOspite(e.target.value)}
-              />
-            </div>
-
-            <datalist id="competition-teams">
-              {squadreDisponibili.map((squadra) => (
-                <option value={squadra} key={squadra} />
-              ))}
-            </datalist>
-
-            <button className="analyze-button" type="submit" disabled={caricamento}>
-              {caricamento ? "Analisi in corso..." : "Analizza partita →"}
-            </button>
-          </form>
+          <UpcomingFixtures
+            competizione={competizione}
+            onAnalyze={analizzaPartita}
+            analysisLoading={caricamento}
+          />
 
           {errore && <div className="error">{errore}</div>}
         </section>
