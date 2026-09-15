@@ -1,5 +1,7 @@
 from app.services.advanced_stats import (
     calculate_team_advanced_metrics_from_league_data,
+    is_inside_penalty_area,
+    saved_shots_inside_box,
 )
 
 
@@ -53,7 +55,19 @@ def main():
     assert metrics["deep_completions_per_match"] == 10.0
     assert metrics["deep_allowed_per_match"] == 10.0
     assert metrics["field_tilt_proxy"] == 50.0
-    assert metrics["field_tilt_status"] == "proxy_in_audit"
+    assert metrics["field_tilt_status"] == "proxy_published"
+
+    shots = [
+        {"X": "0.90", "Y": "0.50", "result": "SavedShot"},
+        {"X": "0.84", "Y": "0.25", "result": "SavedShot"},
+        {"X": "0.70", "Y": "0.50", "result": "SavedShot"},
+        {"X": "0.90", "Y": "0.10", "result": "SavedShot"},
+        {"X": "0.90", "Y": "0.50", "result": "Goal"},
+    ]
+
+    assert is_inside_penalty_area(shots[0]) is True
+    assert is_inside_penalty_area(shots[2]) is False
+    assert saved_shots_inside_box(shots) == 2
 
     print("PASS advanced metrics deterministic logic")
 
