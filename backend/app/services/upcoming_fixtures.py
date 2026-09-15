@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import requests
+
 from app.services.competitions import DEFAULT_COMPETITION, get_competition_config
 from app.services.football_api import get_league_fixtures
+from app.services.understat_fallback import get_understat_upcoming_fixtures
 
 
 def get_upcoming_fixtures(
@@ -12,11 +15,21 @@ def get_upcoming_fixtures(
 ):
     """Restituisce le prossime fixture future ordinate per data.
 
-    Usa la lista fixture gia' cache-izzata dal provider e filtra in base al
-    timestamp, senza dipendere da una stringa di stato specifica del provider.
+    La fonte primaria resta 5DollarFootballAPI. Se il provider gratuito e'
+    temporaneamente limitato o non disponibile e non esiste una cache fixture
+    utilizzabile, usiamo Understat come fallback gratuito per mostrare il
+    calendario senza bloccare il sito.
     """
     config = get_competition_config(competizione)
-    fixtures = get_league_fixtures(config["slug"]).get("data", [])
+
+    try:
+        fixtures = get_league_fixtures(config["slug"]).get("data", [])
+    except requests.RequestException:
+        return get_understat_upcoming_fixtures(
+            config["slug"],
+            limit=limit,
+        )
+
     now_ts = datetime.now(timezone.utc).timestamp()
 
     risultati = []
@@ -56,6 +69,8 @@ def get_upcoming_fixtures(
             "home": home,
             "away": away,
             "league": fixture.get("league", {}).get("name", config["name"]),
+            "source": "5DollarFootballAPI",
+            "data_fallback": False,
         })
 
     risultati.sort(key=lambda item: item["kickoff_ts"])
