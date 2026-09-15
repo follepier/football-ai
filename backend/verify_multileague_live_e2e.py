@@ -98,14 +98,8 @@ def validate_analysis(slug: str, payload: dict):
             raise AssertionError(f"{key} non valido: {value}")
 
     assert_probability_block("1X2", analysis["1x2"], ("1", "X", "2"))
-    assert_probability_block(
-        "Doppia chance",
-        analysis["doppia_chance"],
-        ("1X", "X2", "12"),
-    )
 
-    # Le tre doppie chance non sommano a 100: ciascuna e' un mercato distinto.
-    # Rimuoviamo quindi il controllo di somma e verifichiamo solo il range.
+    # Le tre doppie chance sono mercati distinti e non devono sommare a 100.
     for key in ("1X", "X2", "12"):
         value = float(analysis["doppia_chance"][key])
         if value < 0 or value > 100:
