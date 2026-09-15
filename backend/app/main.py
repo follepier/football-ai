@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 import requests
 from fastapi import FastAPI, HTTPException
 
@@ -5,8 +7,12 @@ from app.services.advanced_stats import get_matchup_advanced_metrics_safe
 from app.services.analysis import calcola_analisi
 from app.services.analysis_cache import (
     build_analysis_cache_key,
+    evaluate_cached_analysis,
+    get_freshness_snapshot,
     load_cached_analysis,
+    record_provider_fixture_snapshot,
     save_cached_analysis,
+    serialize_analysis_requests,
 )
 from app.services.competitions import (
     DEFAULT_COMPETITION,
@@ -54,6 +60,16 @@ def _provider_http_exception(exc):
             "Riprova tra poco."
         ),
     )
+
+
+def _kickoff_started(kickoff_ts):
+    if kickoff_ts is None:
+        return False
+    try:
+        kickoff_ts = float(kickoff_ts)
+    except (TypeError, ValueError):
+        return False
+    return datetime.now(timezone.utc).timestamp() >= kickoff_ts
 
 
 @app.get("/")
@@ -144,14 +160,17 @@ def competition_upcoming_fixtures(
 
 
 @app.get("/analyze")
+@serialize_analysis_requests
 def analyze(
     casa: str = "",
     ospite: str = "",
     competizione: str = DEFAULT_COMPETITION,
-    refresh: bool = False,
+    kickoff_ts: float | None = None,
+    fixture_id: str = "",
 ):
     casa = casa.strip()
     ospite = ospite.strip()
+    fixture_id = fixture_id.strip()
 
     try:
         config = get_competition_config(competizione)
@@ -178,19 +197,42 @@ def analyze(
         casa,
         ospite,
     )
+    cached = load_cached_analysis(cache_key)
+    automatic_refresh_reason = None
 
-    if not refresh:
-        cached = load_cached_analysis(cache_key)
-        if cached is not None:
+    if cached is not None:
+        cache_state = evaluate_cached_analysis(
+            cached,
+            config["slug"],
+            casa,
+            ospite,
+            kickoff_ts=kickoff_ts,
+        )
+        if cache_state["valid"]:
             response = cached["response"]
             response["cache_analisi"] = {
                 "salvata": True,
                 "hit": True,
                 "saved_at": cached.get("saved_at"),
-                "aggiornamento_forzato": False,
+                "stato": "congelata" if cache_state["frozen"] else "salvata",
+                "congelata": bool(cache_state["frozen"]),
+                "aggiornamento_automatico": False,
+                "motivo_aggiornamento": None,
                 "richieste_fonti_evitabili": True,
             }
             return response
+
+        automatic_refresh_reason = cache_state.get("reason")
+
+    elif _kickoff_started(kickoff_ts):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Il calcio d'inizio e' gia' avvenuto e non esiste una copia "
+                "pre-partita salvata. Football AI non crea retroattivamente "
+                "una previsione usando dati successivi al kickoff."
+            ),
+        )
 
     provider_fallback_used = False
 
@@ -202,6 +244,13 @@ def analyze(
         partite_ospite = get_team_last_matches(
             ospite,
             config["slug"],
+        )
+
+        # Aggiorniamo la freshness usando gli stessi dati gia' ottenuti per
+        # l'analisi: nessuna chiamata esterna aggiuntiva.
+        record_provider_fixture_snapshot(
+            config["slug"],
+            [*partite_casa, *partite_ospite],
         )
 
         ultime_partite_casa = trasforma_partite_squadra(
@@ -383,6 +432,10 @@ def analyze(
             "name": config["name"],
             "country": config["country"],
         },
+        "partita_target": {
+            "fixture_id": fixture_id or None,
+            "kickoff_ts": kickoff_ts,
+        },
         "modello": {
             "validato": config["model_validated"],
             "stato": (
@@ -408,12 +461,37 @@ def analyze(
         },
     }
 
-    saved_at = save_cached_analysis(cache_key, response)
+    freshness = get_freshness_snapshot(
+        config["slug"],
+        casa,
+        ospite,
+    )
+    saved_at = save_cached_analysis(
+        cache_key,
+        response,
+        metadata={
+            "competition": config["slug"],
+            "home_team": casa,
+            "away_team": ospite,
+            "fixture_id": fixture_id or None,
+            "kickoff_ts": kickoff_ts,
+            "freshness": freshness,
+            "provisional": provider_fallback_used,
+        },
+    )
+
     response["cache_analisi"] = {
         "salvata": saved_at is not None,
         "hit": False,
         "saved_at": saved_at,
-        "aggiornamento_forzato": bool(refresh),
+        "stato": (
+            "aggiornata_automaticamente"
+            if automatic_refresh_reason
+            else "nuova"
+        ),
+        "congelata": False,
+        "aggiornamento_automatico": bool(automatic_refresh_reason),
+        "motivo_aggiornamento": automatic_refresh_reason,
         "richieste_fonti_evitabili": False,
     }
     return response
