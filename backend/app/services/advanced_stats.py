@@ -73,6 +73,22 @@ def _players_for_team(league_data, team_name):
     ]
 
 
+def _shot_coordinates(shot):
+    try:
+        x = float(shot.get("X"))
+        y = float(shot.get("Y"))
+    except (TypeError, ValueError):
+        return None
+
+    if not math.isfinite(x) or not math.isfinite(y):
+        return None
+
+    if x < 0 or x > 1 or y < 0 or y > 1:
+        return None
+
+    return x, y
+
+
 def is_inside_penalty_area(shot):
     """Return True when an Understat shot is inside the penalty area.
 
@@ -80,12 +96,11 @@ def is_inside_penalty_area(shot):
     Y spans the pitch width. The thresholds below approximate the standard
     penalty-area rectangle on that normalized pitch.
     """
-    try:
-        x = float(shot.get("X"))
-        y = float(shot.get("Y"))
-    except (TypeError, ValueError):
+    coordinates = _shot_coordinates(shot)
+    if coordinates is None:
         return False
 
+    x, y = coordinates
     return x >= 0.833 and 0.211 <= y <= 0.789
 
 
@@ -96,6 +111,78 @@ def saved_shots_inside_box(shots):
         if shot.get("result") == "SavedShot"
         and is_inside_penalty_area(shot)
     )
+
+
+def build_shot_heatmap(shots, columns=8, rows=6):
+    """Build a compact xG-weighted shot heatmap from Understat coordinates."""
+    columns = max(2, int(columns))
+    rows = max(2, int(rows))
+    bins = [
+        [
+            {"shots": 0, "xg": 0.0}
+            for _ in range(columns)
+        ]
+        for _ in range(rows)
+    ]
+
+    valid_shots = 0
+    total_xg = 0.0
+
+    for shot in shots or []:
+        coordinates = _shot_coordinates(shot)
+        if coordinates is None:
+            continue
+
+        x, y = coordinates
+        column = min(columns - 1, int(x * columns))
+        row = min(rows - 1, int(y * rows))
+        xg = max(0.0, _to_float(shot.get("xG")))
+
+        bins[row][column]["shots"] += 1
+        bins[row][column]["xg"] += xg
+        valid_shots += 1
+        total_xg += xg
+
+    max_bin_xg = max(
+        (cell["xg"] for row in bins for cell in row),
+        default=0.0,
+    )
+    max_bin_shots = max(
+        (cell["shots"] for row in bins for cell in row),
+        default=0,
+    )
+
+    cells = []
+    for row_index, row_values in enumerate(bins):
+        for column_index, cell in enumerate(row_values):
+            if max_bin_xg > 0:
+                intensity = cell["xg"] / max_bin_xg
+            elif max_bin_shots > 0:
+                intensity = cell["shots"] / max_bin_shots
+            else:
+                intensity = 0.0
+
+            cells.append(
+                {
+                    "row": row_index,
+                    "column": column_index,
+                    "shots": cell["shots"],
+                    "xg": round(cell["xg"], 3),
+                    "intensity": round(intensity, 3),
+                }
+            )
+
+    return {
+        "columns": columns,
+        "rows": rows,
+        "shots": valid_shots,
+        "xg_total": round(total_xg, 2),
+        "xg_per_shot": _round_or_none(
+            None if valid_shots <= 0 else total_xg / valid_shots,
+            digits=3,
+        ),
+        "cells": cells,
+    }
 
 
 def _get_match_shots(match_id):
@@ -200,6 +287,45 @@ def calculate_recent_saves_inside_box(
     }
 
 
+def calculate_recent_shot_heatmap(
+    league_data,
+    team_name,
+    limit=5,
+):
+    """Build the team's recent offensive shot map from real Understat shots."""
+    team_shots = []
+    matches_used = 0
+
+    for match in _recent_finished_team_matches(
+        league_data,
+        team_name,
+        limit=limit,
+    ):
+        home = (match.get("h") or {}).get("title")
+        away = (match.get("a") or {}).get("title")
+
+        try:
+            shots = _get_match_shots(match["id"])
+        except requests.RequestException:
+            continue
+
+        if home and stessa_squadra(team_name, home):
+            own_shots = shots["home"]
+        elif away and stessa_squadra(team_name, away):
+            own_shots = shots["away"]
+        else:
+            continue
+
+        team_shots.extend(own_shots)
+        matches_used += 1
+
+    heatmap = build_shot_heatmap(team_shots)
+    heatmap["matches"] = matches_used
+    heatmap["source"] = "Understat"
+    heatmap["scope"] = "ultime_partite"
+    return heatmap
+
+
 def calculate_team_advanced_metrics_from_league_data(
     league_data,
     team_name,
@@ -278,10 +404,15 @@ def calculate_team_advanced_metrics_from_league_data(
     }
 
 
-def _with_recent_saves(league_data, team_name, metrics):
+def _with_recent_spatial_metrics(league_data, team_name, metrics):
     return {
         **metrics,
         **calculate_recent_saves_inside_box(
+            league_data,
+            team_name,
+            limit=5,
+        ),
+        "shot_heatmap": calculate_recent_shot_heatmap(
             league_data,
             team_name,
             limit=5,
@@ -309,12 +440,12 @@ def get_matchup_advanced_metrics(
         "status": "success",
         "source": "Understat",
         "scope": "stagione_corrente",
-        "home": _with_recent_saves(
+        "home": _with_recent_spatial_metrics(
             league_data,
             home_team,
             home_metrics,
         ),
-        "away": _with_recent_saves(
+        "away": _with_recent_spatial_metrics(
             league_data,
             away_team,
             away_metrics,
@@ -322,6 +453,7 @@ def get_matchup_advanced_metrics(
         "experimental": {
             "field_tilt_proxy": True,
             "saves_inside_box": "derived_recent_published",
+            "shot_heatmap": "derived_recent_published",
         },
     }
 
@@ -353,5 +485,6 @@ def get_matchup_advanced_metrics_safe(
             "experimental": {
                 "field_tilt_proxy": True,
                 "saves_inside_box": "derived_recent_published",
+                "shot_heatmap": "derived_recent_published",
             },
         }
