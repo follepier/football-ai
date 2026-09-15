@@ -16,22 +16,30 @@ from app.services.team_data import shrinkage_media
 # ============================================================
 # CALIBRAZIONI ENGINE XG
 #
-# La calibrazione Serie A e' quella gia validata out-of-sample
-# nella v0.6.0. Gli altri campionati entrano inizialmente con
-# trasformazione identita' (lambda finale = lambda raw) finche'
-# non completiamo un backtest dedicato per ciascuna competizione.
+# La calibrazione affine v0.6.0, originariamente validata sulla
+# Serie A, ha superato anche i backtest walk-forward e il gate
+# probabilistico holdout 2026 sui nuovi quattro campionati.
+# Manteniamo quindi un'unica calibrazione condivisa per i top 5,
+# evitando coefficienti specifici non sufficientemente robusti.
 # ============================================================
-
-CALIBRAZIONI_XG = {
-    "serie-a": {
-        "intercetta": 0.214047,
-        "pendenza": 0.765037,
-        "validata": True,
-    },
-}
 
 CALIBRAZIONE_XG_INTERCETTA = 0.214047
 CALIBRAZIONE_XG_PENDENZA = 0.765037
+
+CALIBRAZIONI_XG = {
+    slug: {
+        "intercetta": CALIBRAZIONE_XG_INTERCETTA,
+        "pendenza": CALIBRAZIONE_XG_PENDENZA,
+        "validata": True,
+    }
+    for slug in (
+        "serie-a",
+        "premier-league",
+        "la-liga",
+        "bundesliga",
+        "ligue-1",
+    )
+}
 
 
 def get_calibrazione_xg(competizione=DEFAULT_COMPETITION):
