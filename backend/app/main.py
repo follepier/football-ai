@@ -19,6 +19,7 @@ from app.services.team_data import (
     calcola_medie_casa_trasferta,
     crea_dati_squadra,
 )
+from app.services.understat_fallback import get_understat_recent_form
 from app.services.upcoming_fixtures import get_upcoming_fixtures
 
 app = FastAPI(
@@ -36,10 +37,8 @@ def _provider_http_exception(exc):
         return HTTPException(
             status_code=503,
             detail=(
-                "La fonte dati gratuita ha raggiunto temporaneamente il limite "
-                "di richieste. Football AI usera i dati gia in cache quando "
-                "disponibili; se questa partita non e ancora in cache, riprova "
-                "tra poco."
+                "Le fonti gratuite sono temporaneamente limitate e non e' "
+                "disponibile nemmeno un fallback utilizzabile. Riprova tra poco."
             ),
         )
 
@@ -133,6 +132,9 @@ def competition_upcoming_fixtures(
             "country": config["country"],
         },
         "partite": partite,
+        "fallback_attivo": bool(
+            partite and partite[0].get("data_fallback")
+        ),
     }
 
 
@@ -165,6 +167,8 @@ def analyze(
             detail="Le due squadre devono essere diverse.",
         )
 
+    provider_fallback_used = False
+
     try:
         partite_casa = get_team_last_matches(
             casa,
@@ -174,17 +178,34 @@ def analyze(
             ospite,
             config["slug"],
         )
-    except requests.RequestException as exc:
-        raise _provider_http_exception(exc) from exc
 
-    ultime_partite_casa = trasforma_partite_squadra(
-        partite_casa,
-        casa,
-    )
-    ultime_partite_ospite = trasforma_partite_squadra(
-        partite_ospite,
-        ospite,
-    )
+        ultime_partite_casa = trasforma_partite_squadra(
+            partite_casa,
+            casa,
+        )
+        ultime_partite_ospite = trasforma_partite_squadra(
+            partite_ospite,
+            ospite,
+        )
+    except requests.RequestException as provider_exc:
+        # Il modello xG e le metriche avanzate usano gia' Understat. Se il
+        # provider gratuito blocca le fixture con 429, manteniamo operativa
+        # l'analisi usando Understat anche per la forma recente. I campi non
+        # disponibili (corner, cartellini, possesso, attacchi) restano n/d.
+        try:
+            ultime_partite_casa = get_understat_recent_form(
+                casa,
+                config["slug"],
+                limit=5,
+            )
+            ultime_partite_ospite = get_understat_recent_form(
+                ospite,
+                config["slug"],
+                limit=5,
+            )
+            provider_fallback_used = True
+        except requests.RequestException:
+            raise _provider_http_exception(provider_exc) from provider_exc
 
     if not ultime_partite_casa:
         raise HTTPException(
@@ -247,8 +268,17 @@ def analyze(
         config["slug"],
     )
 
-    # Se il provider ha limitato le statistiche opzionali, l'engine xG resta
-    # valido. Non mostriamo pero falsi zeri nel volume tiri.
+    # I valori tecnici zero usati per mantenere compatibile il motore non
+    # vengono mai presentati come osservazioni reali se non esiste un campione.
+    if medie_casa.get("corner_campioni", 0) <= 0:
+        risultato["corner_casa"] = None
+    if medie_ospite.get("corner_campioni", 0) <= 0:
+        risultato["corner_ospite"] = None
+    if medie_casa.get("ammonizioni_campioni", 0) <= 0:
+        risultato["ammonizioni_casa"] = None
+    if medie_ospite.get("ammonizioni_campioni", 0) <= 0:
+        risultato["ammonizioni_ospite"] = None
+
     volume = risultato.get("volume_tiri", {})
     campioni_volume_casa = min(
         medie_casa.get("tiri_in_porta_campioni", 0),
@@ -269,6 +299,8 @@ def analyze(
     risultato["volume_tiri"] = volume
     risultato["disponibilita_dati_gioco"] = {
         "casa": {
+            "corner": medie_casa.get("corner_campioni", 0),
+            "ammonizioni": medie_casa.get("ammonizioni_campioni", 0),
             "possesso": medie_casa.get("possesso_campioni", 0),
             "tiri": campioni_volume_casa,
             "attacchi": medie_casa.get("attacchi_campioni", 0),
@@ -278,6 +310,8 @@ def analyze(
             ),
         },
         "ospite": {
+            "corner": medie_ospite.get("corner_campioni", 0),
+            "ammonizioni": medie_ospite.get("ammonizioni_campioni", 0),
             "possesso": medie_ospite.get("possesso_campioni", 0),
             "tiri": campioni_volume_ospite,
             "attacchi": medie_ospite.get("attacchi_campioni", 0),
@@ -331,6 +365,15 @@ def analyze(
                 if config["model_validated"]
                 else "sperimentale_in_validazione"
             ),
+        },
+        "fonti_dati": {
+            "modello_xg": "Understat",
+            "forma_recente": (
+                "Understat_fallback"
+                if provider_fallback_used
+                else "5DollarFootballAPI"
+            ),
+            "provider_fallback_attivo": provider_fallback_used,
         },
         "analisi": risultato,
         "metriche_avanzate": metriche_avanzate,
