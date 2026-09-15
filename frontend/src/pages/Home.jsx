@@ -180,18 +180,18 @@ function Home() {
             <div className="team-input">
               <label>🏠 Squadra casa</label>
               <input
+                aria-label="Squadra casa"
                 value={squadraCasa}
                 onChange={(e) => setSquadraCasa(e.target.value)}
-                placeholder="Es. Inter"
               />
             </div>
             <div className="vs">VS</div>
             <div className="team-input">
               <label>✈️ Squadra ospite</label>
               <input
+                aria-label="Squadra ospite"
                 value={squadraOspite}
                 onChange={(e) => setSquadraOspite(e.target.value)}
-                placeholder="Es. Milan"
               />
             </div>
             <button className="analyze-button" type="submit" disabled={caricamento}>
