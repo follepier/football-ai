@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 import requests
 
+from app.services.analysis_cache import record_provider_fixture_snapshot
 from app.services.competitions import DEFAULT_COMPETITION, get_competition_config
 from app.services.football_api import get_league_fixtures
 from app.services.understat_fallback import get_understat_upcoming_fixtures
@@ -19,11 +20,16 @@ def get_upcoming_fixtures(
     temporaneamente limitato o non disponibile e non esiste una cache fixture
     utilizzabile, usiamo Understat come fallback gratuito per mostrare il
     calendario senza bloccare il sito.
+
+    Lo snapshot completo appena disponibile aggiorna anche l'indice locale di
+    freshness: le analisi salvate verranno ricalcolate solo se una delle due
+    squadre ha una nuova partita conclusa e solo prima del calcio d'inizio.
     """
     config = get_competition_config(competizione)
 
     try:
         fixtures = get_league_fixtures(config["slug"]).get("data", [])
+        record_provider_fixture_snapshot(config["slug"], fixtures)
     except requests.RequestException:
         return get_understat_upcoming_fixtures(
             config["slug"],
