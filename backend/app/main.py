@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException
 
+from app.services.advanced_stats import get_matchup_advanced_metrics_safe
 from app.services.analysis import calcola_analisi
 from app.services.competitions import (
     DEFAULT_COMPETITION,
@@ -207,6 +208,12 @@ def analyze(
         config["slug"],
     )
 
+    metriche_avanzate = get_matchup_advanced_metrics_safe(
+        casa,
+        ospite,
+        config["slug"],
+    )
+
     return {
         "status": "success",
         "partita": f"{casa} vs {ospite}",
@@ -224,6 +231,7 @@ def analyze(
             ),
         },
         "analisi": risultato,
+        "metriche_avanzate": metriche_avanzate,
         "ultime_partite": {
             "casa": ultime_partite_casa,
             "ospite": ultime_partite_ospite,
